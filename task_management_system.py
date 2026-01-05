@@ -2,8 +2,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 from datetime import datetime
+from tkcalendar import DateEntry
 
 DB_FILE = 'task_management.db'
+
 class TaskManagementSystem:
     def __init__(self, root):
         self.root = root
@@ -29,14 +31,21 @@ class TaskManagementSystem:
 
         self.initialize_styles()
         
-        self.USERNAME = 'admin'
-        self.PASSWORD = 'admin'
+        self.USERNAME = 'chezka'
+        self.PASSWORD = '1924'
         
         self.username_var = tk.StringVar()
         self.password_var = tk.StringVar()
         self.login = False
         
         self.selected_id = None
+
+        self.drag_data = {
+            "ghost": None,
+            "task_id": None,
+            "offset_x": 0,
+            "offset_y": 0
+        }
         
         self.header()
         self.login_page()
@@ -97,98 +106,121 @@ class TaskManagementSystem:
         if username == self.USERNAME and password == self.PASSWORD:
             self.login_frame.destroy()
             self.root.unbind('<Return>')
-            self.main_page()
             self.login = True
+            self.main_page()
         else:
             messagebox.showerror("Login Error", "Incorrect username or password. Please try again.")
             self.login = False
-    
+
+    def logout(self):
+        if not messagebox.askyesno("Logout", "Are you sure you want to log out?"):
+            return
+
+        self.login = False
+        self.selected_id = None
+
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.commit()
+            self.conn.close()
+            self.conn = None
+            self.cursor = None
+
+        if hasattr(self, 'content_frame'):
+            self.content_frame.destroy()
+
+        self.nav_frame.pack_forget()
+
+        self.username_var.set("")
+        self.password_var.set("")
+        self.title_var.set("")
+        self.category_var.set("")
+        self.status_var.set("")
+        self.deadline_var.set("")
+
+        self.login_page()
+
     def header(self):
-        header_frame = tk.Frame(
+        self.header_frame = tk.Frame(
             self.root, 
             bg=self.colors['primary_bg'], 
-            height=60,
-            borderwidth=1,
-            relief='groove'
+            height=60, borderwidth=1, relief='groove'
         )
-        header_frame.pack(fill='x', pady=(0, 20))
+        self.header_frame.pack(fill='x', pady=(0, 20))
+        
         try:
             logo_img = tk.PhotoImage(file="icon.png")
         except:
             logo_img = None
-
-        header_frame.logo_img = logo_img 
+        self.header_frame.logo_img = logo_img 
         
-        image_label = tk.Label(
-            header_frame, 
-            image=logo_img,
-            bg=self.colors['primary_bg']
-        )
-        image_label.pack(side='left', padx=(20, 10), pady=10) 
+        tk.Label(self.header_frame, image=logo_img, bg=self.colors['primary_bg']).pack(side='left', padx=(20, 10), pady=10) 
+        tk.Label(self.header_frame, text='TaskFlow', font=('Verdana', 20, 'bold'), 
+                 bg=self.colors['primary_bg'], fg=self.colors['primary_accent']).pack(side='left')
 
-        header_label = tk.Label(
-            header_frame, 
-            text='TaskFlow', 
-            font=('Verdana', 20, 'bold'), 
-            bg=self.colors['primary_bg'],
-            fg=self.colors['primary_accent'],
-            anchor='w'
-        )
-        header_label.pack(side='left', fill='y', expand=False)
+        self.nav_frame = tk.Frame(self.header_frame, bg=self.colors['primary_bg'])
+        
+        self.logout_btn = tk.Button(self.nav_frame, text="Logout", command=self.logout,
+                                    bg=self.colors['primary_bg'], fg=self.colors['primary_accent'], font=self.font_bold, relief='flat',
+                                    borderwidth=0,
+                                    highlightthickness=1,
+                                    highlightbackground=self.colors['primary_accent'],
+                                    activebackground=self.colors['secondary_bg'])
+        self.logout_btn.pack(side='right', padx=10)
+
+        self.kanban_btn = tk.Button(self.nav_frame, text="Kanban", command=self.show_kanban_view,
+                                    bg=self.colors['primary_bg'], fg=self.colors['primary_accent'], font=self.font_bold, relief="flat",
+                                    borderwidth=0,
+                                    highlightthickness=0,
+                                    activebackground=self.colors['secondary_bg'])
+        self.kanban_btn.pack(side='right', padx=10)
+        
+        self.list_view_btn = tk.Button(self.nav_frame, text="List View", command=self.show_list_view,
+                                     bg=self.colors['primary_bg'], fg=self.colors['primary_accent'], font=self.font_bold, relief="flat",
+                                     borderwidth=0,
+                                     highlightthickness=0,
+                                     activebackground=self.colors['secondary_bg'])
+        self.list_view_btn.pack(side='right', padx=10)
 
     def main_page(self):
         self.root.protocol('WM_DELETE_WINDOW', self.on_close)
+        self.nav_frame.pack(side='right', padx=20)
+        self.content_frame = tk.Frame(self.root, bg=self.colors['primary_bg'])
+        self.content_frame.pack(fill='both', expand=True)
+        self.initialize_database()
+        self.show_list_view()
 
-        sidebar_frame = tk.Frame(
-            self.root,
-            bg=self.colors['primary_bg'],
-            width=350,
-            borderwidth=1,
-            relief='ridge'
-        )
-        sidebar_frame.pack(side='left', fill='y', padx=20, pady=(0, 20)) 
+    def clear_content(self):
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()  
+
+    def show_list_view(self):
+        self.clear_content()
+        
+        sidebar_frame = tk.Frame(self.content_frame, bg=self.colors['primary_bg'], width=350, borderwidth=1, relief='ridge')
+        sidebar_frame.pack(side='left', fill='y', padx=20, pady=(0, 20))
         sidebar_frame.pack_propagate(False)
 
         input_frame = tk.Frame(sidebar_frame, bg=self.colors['primary_bg'], padx=10, pady=10)
         input_frame.pack(fill='x')
-        
-        input_frame.grid_columnconfigure(1, weight=1) 
+        input_frame.grid_columnconfigure(1, weight=1)
 
         self.create_input_field(input_frame, 'Title:', self.title_var, 0, 0, 'entry')
         self.create_input_field(input_frame, 'Category:', self.category_var, 1, 0, 'entry')
         self.create_input_field(input_frame, 'Status:', self.status_var, 2, 0, 'dropdown')
-        self.create_input_field(input_frame, 'Deadline:', self.deadline_var, 3, 0, 'entry')
+        self.create_input_field(input_frame, 'Deadline:', self.deadline_var, 3, 0, 'date_picker')
         self.description_var = self.create_input_field(input_frame, 'Description:', None, 4, 0, 'textarea')
 
-        button_frame = tk.Frame(sidebar_frame, bg=self.colors['primary_bg'], pady=10, padx=10)
-        button_frame.pack(fill='x')
+        btn_frame = tk.Frame(sidebar_frame, bg=self.colors['primary_bg'], pady=10)
+        btn_frame.pack(fill='x')
+        for text, cmd in [('Add Task', self.add_task), ('Update Task', self.update_task), 
+                          ('Delete Task', self.delete_task), ('Clear Fields', self.clear_fields)]:
+            tk.Button(btn_frame, text=text, command=cmd, font=self.font_bold,
+                      bg=self.colors['primary_accent'], fg="white").pack(fill='x', padx=15, pady=5)
 
-        button_config = [
-            ('Add Task', self.add_task),
-            ('Update Task', self.update_task),
-            ('Delete Task', self.delete_task),
-            ('Clear Fields', self.clear_fields)
-        ]
-
-        for text, cmd in button_config:
-            bg_color = self.colors['secondary_bg'] if text == 'Clear Fields' else self.colors['primary_accent']
-            fg_color = self.colors['primary_txt'] if text == 'Clear Fields' else self.colors['secondary_txt']
-            font_style = self.font if text == 'Clear Fields' else self.font_bold
-            
-            tk.Button(
-                button_frame,
-                text=text,
-                command=cmd,
-                bg=bg_color,
-                fg=fg_color,
-                font=font_style,
-            ).pack(fill='x', padx=5, pady=5)
-
-        table_frame = tk.Frame(self.root, bg=self.colors['primary_bg'])
-        table_frame.pack(fill='both', expand=True, padx=(0,20), pady=(0, 20))
-
-        self.create_table(table_frame)
-        self.initialize_database()   
+        table_container = tk.Frame(self.content_frame, bg=self.colors['primary_bg'])
+        table_container.pack(side='right', fill='both', expand=True, padx=(0, 20), pady=(0, 20))
+        self.create_table(table_container)
+        self.refresh_table()
 
     def create_input_field(self, parent, label_text, var, row, col, input_type, mask=False):
         label = tk.Label(
@@ -249,16 +281,54 @@ class TaskManagementSystem:
                 )
                 combobox.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=5)
                 return combobox
-            
+
+            case 'date_picker':
+                cal = DateEntry(
+                    parent, 
+                    width=12, 
+                    background=self.colors['primary_accent'],
+                    foreground='white', 
+                    borderwidth=2, 
+                    date_pattern='yyyy-mm-dd',
+                    font=self.font
+                )
+                cal.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=3)
+
+                def on_date_select(event):
+                    var.set(cal.get_date())
+                
+                cal.bind("<<DateEntrySelected>>", on_date_select)
+
+                def update_calendar(*args):
+                    try:
+                        if not cal.winfo_exists():
+                            return
+                        
+                        date_str = var.get()
+                        if date_str:
+                            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                            cal.set_date(date_obj)
+                    except (ValueError, tk.TclError):
+                        pass 
+
+                trace_id = var.trace_add("write", update_calendar)
+
+                def on_destroy(event):
+                    try:
+                        var.trace_remove("write", trace_id)
+                    except:
+                        pass
+                
+                cal.bind("<Destroy>", on_destroy)
+
+                return cal
+
             case _:
                 return None
     
     def create_table(self, parent):
         tree_frame = tk.Frame(parent)
         tree_frame.pack(fill='both', expand=True)
-
-        # x_tree_scroll = ttk.Scrollbar(tree_frame, orient='horizontal')
-        # x_tree_scroll.pack(side='bottom', fill='x')
 
         y_tree_scroll = ttk.Scrollbar(tree_frame, orient='vertical')
         y_tree_scroll.pack(side='right', fill='y')
@@ -268,12 +338,10 @@ class TaskManagementSystem:
             columns=("Id", "Title", "Category", "Status", "Deadline", "Description"),
             show='headings',
             yscrollcommand=y_tree_scroll.set, 
-            # xscrollcommand=x_tree_scroll.set,
         )
         self.task_table.pack(side='left', fill='both', expand=True)
         
         y_tree_scroll.config(command=self.task_table.yview)
-        # x_tree_scroll.config(command=self.task_table.xview)
 
         column_config = [
             ("Id", 0, 'w'),
@@ -334,7 +402,6 @@ class TaskManagementSystem:
                 )
             ''')
             self.conn.commit()
-            self.refresh_table()
             return True
         except sqlite3.Error as e:
             messagebox.showerror("Databse Error", f"Failed to initialize database:\n{e}")
@@ -378,6 +445,12 @@ class TaskManagementSystem:
             return False
         
     def add_task(self):
+        if self.selected_id:
+            confirm = messagebox.askyesno("Duplicate Task", "Do you want to add this as a NEW task?")
+            if not confirm:
+                return
+            self.selected_id = None
+
         title = self.title_var.get().strip()
         category = self.category_var.get().strip()
         status = self.status_var.get().strip()
@@ -480,11 +553,9 @@ class TaskManagementSystem:
         self.root.destroy()
 
     def initialize_styles(self):
-        """Initializes and configures all custom ttk styles."""
         style = ttk.Style()
         style.theme_use('default')
 
-        # --- Treeview Style ---
         style.configure(
             "Treeview",
             background=self.colors['primary_bg'],
@@ -502,7 +573,6 @@ class TaskManagementSystem:
             padding=5
         )
 
-        # --- Combobox Style (Windows-compatible) ---
         self.root.option_add('*TCombobox*Listbox.background', self.colors['secondary_bg'])
         self.root.option_add('*TCombobox*Listbox.foreground', self.colors['primary_txt'])
         self.root.option_add('*TCombobox*Listbox.selectBackground', self.colors['primary_accent'])
@@ -519,6 +589,218 @@ class TaskManagementSystem:
             arrowcolor=self.colors['primary_txt'],
             fieldbackground=self.colors['secondary_bg']
         )
+
+    def show_kanban_view(self):
+        self.clear_content()
+
+        self.kanban_main = tk.Frame(self.content_frame, bg=self.colors['secondary_bg'])
+        self.kanban_main.pack(fill='both', expand=True, padx=20, pady=(0, 20))
+
+        statuses = ['To Do', 'In Progress', 'Done']
+        self.kanban_columns = {}
+
+        self.cursor.execute("SELECT id, title, category, status, deadline FROM tasks")
+        all_tasks = self.cursor.fetchall()
+
+        wrap_width = 300 
+
+        for i, status in enumerate(statuses):
+            col = tk.Frame(
+                self.kanban_main,
+                bg=self.colors['primary_bg'],
+                borderwidth=1,
+                relief='solid'
+            )
+            col.place(relx=i / 3, rely=0, relwidth=0.32, relheight=1)
+
+            self.kanban_columns[status] = col
+
+            tk.Label(
+                col,
+                text=status.upper(),
+                font=self.font_bold,
+                bg=self.colors['primary_accent'],
+                fg="white"
+            ).pack(fill='x')
+
+            canvas = tk.Canvas(col, bg=self.colors['primary_bg'], highlightthickness=0)
+            scroll_y = ttk.Scrollbar(col, orient="vertical", command=canvas.yview)
+            card_frame = tk.Frame(canvas, bg=self.colors['primary_bg'])
+
+            card_frame.bind("<Configure>",
+                lambda e, c=canvas: c.configure(scrollregion=c.bbox("all"))
+            )
+
+            canvas.create_window((0, 0), window=card_frame, anchor="nw", width=col.winfo_reqwidth()) 
+            canvas.configure(yscrollcommand=scroll_y.set)
+            
+            col.bind("<Configure>", lambda e, c=canvas, w=card_frame: c.itemconfig(c.create_window((0, 0), window=w, anchor="nw"), width=e.width))
+
+            canvas.pack(side="left", fill="both", expand=True)
+            scroll_y.pack(side="right", fill="y")
+
+            for task in all_tasks:
+                if task['status'] == status:
+                    card = tk.Frame(
+                        card_frame,
+                        highlightbackground="#CCC",
+                        highlightthickness=1,
+                        padx=10,
+                        pady=10,
+                        bg="white"
+                    )
+                    card.pack(fill='x', padx=10, pady=5)
+
+                    l1 = tk.Label(
+                        card, 
+                        text=task['title'],
+                        font=self.font_bold, 
+                        bg="white",
+                        fg=self.colors['primary_accent'],
+                        anchor='w',
+                        justify='left',
+                        wraplength=wrap_width 
+                    )
+                    l1.pack(fill='x', anchor='w')
+                    
+                    l2 = tk.Label(
+                        card, 
+                        text=task['category'],
+                        font=('Verdana', 9), 
+                        fg="gray", 
+                        bg="white",
+                        anchor='w'
+                    )
+                    l2.pack(fill='x', anchor='w')
+
+                    if task['deadline']:
+                        l3 = tk.Label(
+                            card,
+                            text=f"{task['deadline']}",
+                            font=('Verdana', 9),
+                            fg=self.colors['primary_accent'],
+                            bg="white",
+                            anchor='w'
+                        )
+                        l3.pack(fill='x', anchor='w', pady=(5, 0))
+
+                    self.make_card_draggable(card, task['id'])
+    
+    def make_card_draggable(self, card, task_id):
+        def start_handler(event):
+            self.drag_start(event, card, task_id)
+            
+        card.bind("<Button-1>", start_handler)
+        for child in card.winfo_children():
+            child.bind("<Button-1>", start_handler)
+
+
+    def drag_start(self, event, card_widget, task_id):
+        self.drag_data["task_id"] = task_id
+        
+        card_x = card_widget.winfo_rootx()
+        card_y = card_widget.winfo_rooty()
+        
+        self.drag_data["offset_x"] = event.x_root - card_x
+        self.drag_data["offset_y"] = event.y_root - card_y
+
+        try:
+            card_title = card_widget.winfo_children()[0].cget("text")
+        except:
+            card_title = "Moving..."
+
+        self.drag_data["ghost"] = tk.Frame(
+            self.kanban_main,
+            bg="white",
+            highlightbackground=self.colors['primary_accent'],
+            highlightthickness=2,
+            padx=10,
+            pady=10
+        )
+
+        tk.Label(
+            self.drag_data["ghost"],
+            text=card_title,
+            font=self.font_bold,
+            bg="white",
+            fg=self.colors['primary_accent']
+        ).pack(anchor="w")
+
+        start_x = (event.x_root - self.kanban_main.winfo_rootx() - self.drag_data["offset_x"]) + 20
+        start_y = (event.y_root - self.kanban_main.winfo_rooty() - self.drag_data["offset_y"]) + 20
+
+        self.drag_data["ghost"].place(x=start_x, y=start_y)
+        self.drag_data["ghost"].lift() 
+
+        self.root.bind("<B1-Motion>", self.drag_motion)
+        self.root.bind("<ButtonRelease-1>", self.drag_release)
+
+
+    def drag_motion(self, event):
+        ghost = self.drag_data["ghost"]
+        if not ghost:
+            return
+
+        # --- FIX IS HERE ---
+        # Keep the same +20 offset during movement
+        new_x = (event.x_root - self.kanban_main.winfo_rootx() - self.drag_data["offset_x"]) + 20
+        new_y = (event.y_root - self.kanban_main.winfo_rooty() - self.drag_data["offset_y"]) + 20
+
+        ghost.place(x=new_x, y=new_y)
+
+    def drag_release(self, event):
+        ghost = self.drag_data["ghost"]
+        if not ghost:
+            return
+
+        # Destroy ghost immediately so it doesn't block vision
+        ghost.destroy()
+        self.drag_data["ghost"] = None
+        
+        self.root.unbind("<B1-Motion>")
+        self.root.unbind("<ButtonRelease-1>")
+
+        new_status = None
+        
+        # Cursor location
+        x_root = event.x_root
+        y_root = event.y_root
+
+        # CHECK 1: Coordinate overlap (Most reliable)
+        for status, col_frame in self.kanban_columns.items():
+            col_x1 = col_frame.winfo_rootx()
+            col_y1 = col_frame.winfo_rooty()
+            col_x2 = col_x1 + col_frame.winfo_width()
+            col_y2 = col_y1 + col_frame.winfo_height()
+
+            if col_x1 <= x_root <= col_x2 and col_y1 <= y_root <= col_y2:
+                new_status = status
+                break
+        
+        if new_status:
+            try:
+                self.cursor.execute(
+                    "UPDATE tasks SET status=? WHERE id=?",
+                    (new_status, self.drag_data["task_id"])
+                )
+                self.conn.commit()
+            except sqlite3.Error as e:
+                messagebox.showerror("Update Error", f"Could not move task: {e}")
+
+        self.show_kanban_view()
+
+    def is_descendant(self, widget, parent):
+        while widget:
+            if widget == parent:
+                return True
+            try:
+                parent_name = widget.winfo_parent()
+                if not parent_name:
+                    break
+                widget = self.root.nametowidget(parent_name)
+            except Exception:
+                break
+        return False
 
 if __name__ == "__main__":
     window = tk.Tk()

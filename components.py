@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk
 from tkcalendar import DateEntry
 from datetime import datetime
+import sys
+import os
 from config import COLORS, FONTS
 
 class Header(tk.Frame):
@@ -10,8 +12,10 @@ class Header(tk.Frame):
         self.controller = controller
         self.pack(fill='x', pady=(0, 20))
         
+        logo_img = self.resource_path("assets/icon.png")
+
         try:
-            logo_img = tk.PhotoImage(file="icon.png")
+            logo_img = tk.PhotoImage(file=logo_img)
         except:
             logo_img = None
         self.logo_img = logo_img 
@@ -22,6 +26,14 @@ class Header(tk.Frame):
 
         if show_nav:
             self.create_nav_buttons()
+
+    def resource_path(self, relative_path):
+        try:
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+
+        return os.path.join(base_path, relative_path)
 
     def create_nav_buttons(self):
         nav_frame = tk.Frame(self, bg=COLORS['primary_bg'])

@@ -120,7 +120,7 @@ class RegisterPage(tk.Frame):
         
         create_input_field(input_frame, "Username:", self.user_var, 0, 0, 'entry')
         create_input_field(input_frame, "Password:", self.pass_var, 1, 0, 'entry', mask=True)
-        create_input_field(input_frame, "Confirm:", self.confirm_var, 2, 0, 'entry', mask=True)
+        create_input_field(input_frame, "Confirm Password:", self.confirm_var, 2, 0, 'entry', mask=True)
 
         # Register Button
         tk.Button(container, text="Sign Up", command=self.attempt_register,

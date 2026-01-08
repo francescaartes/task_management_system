@@ -2,12 +2,19 @@ import tkinter as tk
 from config import setup_styles, COLORS
 from database import Database
 from pages import LoginPage, RegisterPage, ListViewPage, KanbanPage
+import os
 
 class TaskApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('Task Management System')
         self.geometry('1100x700')
+
+        base_folder = os.path.dirname(__file__)
+        image_path = os.path.join(base_folder, 'assets', 'logo.png')
+        logo_img = tk.PhotoImage(file=image_path)
+        self.iconphoto(False, logo_img)
+
         self.configure(bg=COLORS['primary_bg'])
         
         setup_styles(self)

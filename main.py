@@ -1,7 +1,7 @@
 import tkinter as tk
 from config import setup_styles, COLORS
 from database import Database
-from pages import LoginPage, ListViewPage, KanbanPage
+from pages import LoginPage, RegisterPage, ListViewPage, KanbanPage
 
 class TaskApp(tk.Tk):
     def __init__(self):
@@ -23,8 +23,10 @@ class TaskApp(tk.Tk):
         self.init_frames()
         self.show_view("LoginPage")
 
+        self.current_user_id = None
+
     def init_frames(self):
-        for F in (LoginPage, ListViewPage, KanbanPage):
+        for F in (LoginPage, RegisterPage, ListViewPage, KanbanPage):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)
             self.frames[page_name] = frame
@@ -36,7 +38,8 @@ class TaskApp(tk.Tk):
         if hasattr(frame, 'refresh'):
             frame.refresh()
 
-    def login_success(self):
+    def login_success(self, user_id):
+        self.current_user_id = user_id
         self.show_view("ListViewPage")
 
     def logout(self):

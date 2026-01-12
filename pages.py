@@ -41,9 +41,12 @@ class LoginPage(tk.Frame):
             bg=COLORS['primary_bg'],
         )
         input_frame.pack(fill='x', pady=(0, 20), padx=20)
-        create_input_field(input_frame, 'Username:', self.user_var, 0, 0, 'entry')
-        create_input_field(input_frame, 'Password:', self.pass_var, 1, 0, 'entry', mask=True)
+        user_entry = create_input_field(input_frame, 'Username:', self.user_var, 0, 0, 'entry')
+        pass_entry = create_input_field(input_frame, 'Password:', self.pass_var, 1, 0, 'entry', mask=True)
 
+        if user_entry: user_entry.bind('<Return>', self.check_login)
+        if pass_entry: pass_entry.bind('<Return>', self.check_login)
+        
         # Login Button
         btn_frame = tk.Frame(
             container,
@@ -58,8 +61,7 @@ class LoginPage(tk.Frame):
             bg=COLORS['primary_accent'],
             fg=COLORS['secondary_txt']
         ).pack(fill='x', anchor='center')
-        self.bind('<Return>', self.check_login)
-
+        
         # Sign Up Button
         signup_frame = tk.Frame(btn_frame, bg=COLORS['primary_bg'])
         signup_frame.pack(fill='x', anchor='center', pady=(10, 0))
@@ -93,7 +95,7 @@ class LoginPage(tk.Frame):
         user_id = self.controller.db.verify_user(user, pw)
         
         if  user_id:
-            self.controller.login_success(user_id)
+            self.controller.login_success(user_id, user)
         else:
             messagebox.showerror("Login Error", "Incorrect username or password. Please try again.")
 
@@ -165,8 +167,8 @@ class ListViewPage(tk.Frame):
         content.pack(side='right', fill='both', expand=True, padx=(0, 20), pady=(0, 20))
         
         # Sidebar
-        sidebar = tk.Frame(content, bg=COLORS['primary_bg'], width=350, bd=0, relief='ridge')
-        sidebar.pack(side='left', fill='y', padx=20, pady=(0, 20))
+        sidebar = tk.Frame(content, bg=COLORS['primary_bg'], width=350, bd=1, relief='ridge')
+        sidebar.pack(side='left', fill='y', padx=20)
         sidebar.pack_propagate(False)
         
         # Inputs
@@ -196,6 +198,35 @@ class ListViewPage(tk.Frame):
             tk.Button(btn_frame, text=text, command=cmd, font=FONTS['bold'], 
                       bg=COLORS['primary_accent'], fg='white').pack(fill='x', padx=15, pady=5)
 
+        search_frame = tk.Frame(content, bg=COLORS['primary_bg'], pady=10)
+        search_frame.pack(fill='x')
+
+        self.search_var = tk.StringVar()
+        
+        # Search Entry
+        search_entry = tk.Entry(
+            search_frame, 
+            textvariable=self.search_var, 
+            font=FONTS['default'],
+            bg=COLORS['secondary_bg'],
+            fg=COLORS['primary_txt'],
+            insertbackground=COLORS['primary_accent'],
+            relief='flat', bd=0, highlightthickness=1,
+            highlightbackground=COLORS['primary_accent']
+        )
+        search_entry.pack(side='left', fill='x', expand=True, padx=(0, 10), ipady=5)
+        search_entry.bind('<Return>', self.perform_search) # Bind Enter Key
+
+        # Search Button
+        tk.Button(search_frame, text="Search", command=self.perform_search,
+                  bg=COLORS['primary_accent'], fg='white', font=FONTS['bold'], width=10
+                  ).pack(side='left', padx=(0, 5))
+
+        # Reset Button
+        tk.Button(search_frame, text="Reset", command=self.reset_search,
+                  bg=COLORS['secondary_bg'], fg=COLORS['primary_txt'], font=FONTS['bold'], width=8
+                  ).pack(side='left')
+
         # Table
         self.setup_table(content)
         
@@ -210,45 +241,50 @@ class ListViewPage(tk.Frame):
             yscrollcommand=y_tree_scroll.set, 
         )
         self.tree.pack(side='left', fill='both', expand=True)
-        
         y_tree_scroll.config(command=self.tree.yview)
 
         column_config = [
-            ("Id", 0, 'w'),
-            ("Title", 150, 'w'),
-            ("Category", 100, 'center'),
-            ("Status", 100, 'center'),
-            ("Deadline", 100, 'center'),
-            ("Description", 200, 'w') 
+            ("Id", 0, 'w'), ("Title", 150, 'w'), ("Category", 100, 'center'),
+            ("Status", 100, 'center'), ("Deadline", 100, 'center'), ("Description", 200, 'w') 
         ]
 
         for col, width, pos in column_config:
-            if col == "Id":
-                self.tree.column(col, width=width, anchor=pos, stretch='no')
-                self.tree.heading(col, text='', anchor='center')
-            else:
-                self.tree.column(col, width=width, anchor=pos)
-                self.tree.heading(col, text=col, anchor='center')
+            self.tree.column(col, width=width, anchor=pos, stretch=(col!="Id"))
+            self.tree.heading(col, text=col if col != "Id" else '', anchor='center')
 
         self.tree.bind('<<TreeviewSelect>>', self.on_select)
 
-        def on_mousewheel(event):
-            self.tree.yview_scroll(int(-1*(event.delta/120)), "units")
+    # Search Logic
+    def perform_search(self, event=None):
+        query = self.search_var.get().strip()
+        if not query:
+            self.refresh() # If empty, show all
+            return
 
-        def bind_scroll(event):
-            self.tree.bind_all("<MouseWheel>", on_mousewheel)
+        # Clear current table
+        for item in self.tree.get_children(): 
+            self.tree.delete(item)
+            
+        # Get filtered results from DB
+        user_id = self.controller.current_user_id
+        results = self.controller.db.search_tasks(user_id, query)
+        
+        if results:
+            for task in results:
+                self.tree.insert('', 'end', values=list(task.values()))
+        else:
+            pass
 
-        def unbind_scroll(event):
-            self.tree.unbind_all("<MouseWheel>")
-
-        self.tree.bind('<Enter>', bind_scroll)
-        self.tree.bind('<Leave>', unbind_scroll)
+    def reset_search(self):
+        self.search_var.set("")
+        self.refresh()
 
     def refresh(self):
         user_id = self.controller.current_user_id
         for item in self.tree.get_children(): 
             self.tree.delete(item)
 
+        # Standard refresh gets ALL tasks
         for task in self.controller.db.get_all_tasks(user_id):
             self.tree.insert('', 'end', values=list(task.values()))
 
@@ -358,7 +394,7 @@ class KanbanPage(tk.Frame):
         
         # Main container
         self.board = tk.Frame(self, bg=COLORS['secondary_bg'])
-        self.board.pack(fill='both', expand=True, padx=20, pady=20)
+        self.board.pack(fill='both', expand=True, padx=(20, 0), pady=20)
         
         self.columns = {}
         self.drag_data = {"ghost": None, "task_id": None, "offset_x": 0, "offset_y": 0}
@@ -469,3 +505,63 @@ class KanbanPage(tk.Frame):
                     self.controller.db.update_status(self.drag_data["task_id"], status)
                     self.refresh()
                     break
+
+class SettingsPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg=COLORS['primary_bg'])
+        self.controller = controller
+        Header(self, controller, show_nav=True).pack(fill='x')
+
+        container = tk.Frame(self, bg=COLORS['primary_bg'], padx=40, pady=10)
+        container.pack(fill='both', expand=True)
+
+        # Account Settings
+        tk.Label(container, text="Account Settings", font=FONTS['header'], 
+                 bg=COLORS['primary_bg'], fg=COLORS['primary_accent']).pack(anchor='w', pady=0)
+
+        acct_frame = tk.Frame(container, bg=COLORS['primary_bg'], padx=20, pady=20, bd=1, relief='groove')
+        acct_frame.pack(fill='x', pady=(0, 30))
+
+        current_user = getattr(self.controller, 'current_user', '')
+        self.new_user_var = tk.StringVar(value=current_user)
+        self.new_pass_var = tk.StringVar()
+        self.confirm_pass_var = tk.StringVar()
+
+        create_input_field(acct_frame, "Username:", self.new_user_var, 0, 0, 'entry')
+        create_input_field(acct_frame, "New Password:", self.new_pass_var, 1, 0, 'entry', mask=True)
+        create_input_field(acct_frame, "Confirm Password:", self.confirm_pass_var, 2, 0, 'entry', mask=True)
+        
+        tk.Button(acct_frame, text="Update Account", command=self.save_account,
+                  bg=COLORS['primary_accent'], fg='white', font=FONTS['bold']).grid(row=3, column=1, sticky='e', pady=10)
+
+    def tkraise(self, *args, **kwargs):
+        super().tkraise(*args, **kwargs)
+        
+        # Refresh Account Fields
+        current_user = getattr(self.controller, 'current_user', '')
+        self.new_user_var.set(current_user)
+        self.new_pass_var.set('')
+        self.confirm_pass_var.set('')
+
+    def save_account(self):
+        user = self.new_user_var.get().strip()
+        pw = self.new_pass_var.get().strip()
+        confirm = self.confirm_pass_var.get().strip()
+
+        if not user:
+            messagebox.showwarning("Error", "Username cannot be empty.")
+            return
+
+        if pw and pw != confirm:
+            messagebox.showerror("Error", "Passwords do not match.")
+            return
+        
+        success = self.controller.db.update_credentials(
+            self.controller.current_user_id, user, pw
+        )
+        
+        if success:
+            messagebox.showinfo("Success", "Account updated! Please login again.")
+            self.controller.logout()
+        else:
+            messagebox.showerror("Error", "Username already taken.")

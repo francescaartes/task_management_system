@@ -148,3 +148,48 @@ class Database:
             conn.commit()
         finally:
             conn.close()
+    
+    def search_tasks(self, user_id, query):
+        search_term = f"%{query}%"
+        
+        sql = '''
+            SELECT * FROM tasks 
+            WHERE user_id = ? 
+            AND (title LIKE ? OR category LIKE ? OR description LIKE ?)
+            ORDER BY id
+        '''
+        
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(sql, (user_id, search_term, search_term, search_term))
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
+    def update_credentials(self, user_id, new_username, new_password):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Udate BOTH or just Password
+            if new_password:
+                hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+                cursor.execute(
+                    "UPDATE users SET username=?, password_hash=? WHERE id=?",
+                    (new_username, hashed_pw.decode('utf-8'), user_id)
+                )
+            
+            # Only update Username
+            else:
+                cursor.execute(
+                    "UPDATE users SET username=? WHERE id=?",
+                    (new_username, user_id)
+                )
+                
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False # Username taken
+        finally:
+            conn.close()

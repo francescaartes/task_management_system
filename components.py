@@ -13,7 +13,6 @@ class Header(tk.Frame):
         self.pack(fill='x', pady=(0, 20))
         
         logo_img = self.resource_path("assets/icon.png")
-
         try:
             logo_img = tk.PhotoImage(file=logo_img)
         except:
@@ -23,6 +22,12 @@ class Header(tk.Frame):
         tk.Label(self, image=logo_img, bg=COLORS['primary_bg']).pack(side='left', padx=(20, 10), pady=10) 
         tk.Label(self, text='TaskFlow', font=FONTS['header'], 
                  bg=COLORS['primary_bg'], fg=COLORS['primary_accent']).pack(side='left')
+
+        user_path = self.resource_path("assets/user.png")
+        try:
+            self.user_img = tk.PhotoImage(file=user_path)
+        except:
+            self.user_img = None
 
         if show_nav:
             self.create_nav_buttons()
@@ -39,8 +44,24 @@ class Header(tk.Frame):
         nav_frame = tk.Frame(self, bg=COLORS['primary_bg'])
         nav_frame.pack(side='right', padx=20)
 
+        if self.user_img:
+            self.user_btn = tk.Button(nav_frame, image=self.user_img, 
+                                      bg=COLORS['primary_bg'], bd=0, 
+                                      activebackground=COLORS['primary_bg'],
+                                      cursor='hand2')
+        else:
+            # Fallback if image missing
+            self.user_btn = tk.Button(nav_frame, text="👤 ", font=("Arial", 16),
+                                      bg=COLORS['primary_bg'], fg=COLORS['primary_accent'], bd=0,
+                                      activebackground=COLORS['primary_bg'],
+                                      cursor='hand2')
+            
+        self.user_btn.pack(side='right', padx=(10, 0))
+        
+        # Bind Left Click to show menu
+        self.user_btn.bind("<Button-1>", self.show_user_menu)
+
         buttons = [
-            ("Logout", self.controller.logout),
             ("Kanban", lambda: self.controller.show_view("KanbanPage")),
             ("List View", lambda: self.controller.show_view("ListViewPage"))
         ]
@@ -52,21 +73,103 @@ class Header(tk.Frame):
                             activebackground=COLORS['secondary_bg'])
             btn.pack(side='right', padx=10)
 
+    def show_user_menu(self, event):
+        # Get Username
+        username = getattr(self.controller, 'current_user', 'User')
+
+        menu_options = [
+            (f"Header: {username}", None),
+            ("---", None),
+            ("Settings", lambda: self.controller.show_view("SettingsPage")),
+            ("Logout", self.controller.logout)
+        ]
+        
+        # Launch Custom Dropdown
+        DropdownMenu(self.winfo_toplevel(), self.user_btn, menu_options)
+
+class DropdownMenu(tk.Toplevel):
+    def __init__(self, parent, target_widget, options):
+        super().__init__(parent)
+        self.target = target_widget
+        self.options = options
+        
+        # Window Configuration
+        self.overrideredirect(True) 
+        self.config(bg=COLORS['primary_accent']) 
+        self.attributes('-topmost', True)
+        
+        # Container for items
+        self.container = tk.Frame(self, bg=COLORS['primary_bg'])
+        self.container.pack(fill='both', expand=True, padx=1, pady=1)
+        
+        # Add Menu Items
+        for text, command in options:
+            if text == "---": # Separator
+                tk.Frame(self.container, height=1, bg='gray').pack(fill='x', pady=5)
+            elif text.startswith("Header:"): # Non-clickable Header
+                tk.Label(self.container, text=text.replace("Header:", ""), 
+                         font=FONTS['bold'], fg=COLORS['primary_accent'], bg=COLORS['primary_bg'], 
+                         anchor='w', padx=15, pady=5).pack(fill='x')
+            else:
+                btn = tk.Button(self.container, text=text, command=lambda cmd=command: self.on_click(cmd),
+                                font=FONTS['default'], bg=COLORS['primary_bg'], fg=COLORS['primary_txt'],
+                                activebackground=COLORS['secondary_bg'], activeforeground=COLORS['primary_accent'],
+                                bd=0, relief='flat', anchor='w', padx=15, pady=8, cursor='hand2')
+                btn.pack(fill='x')
+                
+                # Hover Effect
+                btn.bind("<Enter>", lambda e, b=btn: b.config(bg=COLORS['primary_accent'], fg='white'))
+                btn.bind("<Leave>", lambda e, b=btn: b.config(bg=COLORS['primary_bg'], fg=COLORS['primary_txt']))
+
+        # Click Outside to close
+        self.bind("<FocusOut>", lambda e: self.destroy())
+        
+        # Calculate Position
+        self.update_idletasks()
+        self.place_menu()
+        
+        self.focus_set()
+
+    def place_menu(self):
+        self.update_idletasks()
+        
+        # Get Button Coordinates
+        btn_x = self.target.winfo_rootx()
+        btn_y = self.target.winfo_rooty()
+        btn_h = self.target.winfo_height()
+        btn_w = self.target.winfo_width()
+        
+        # Get Menu Dimensions
+        menu_w = self.container.winfo_reqwidth() + 4
+        menu_h = self.container.winfo_reqheight() + 4
+        
+        # Right Alignment
+        x = (btn_x + btn_w) - menu_w
+        y = btn_y + btn_h + 2
+
+        if x < 0:
+            x = btn_x 
+            
+        self.geometry(f"{menu_w}x{menu_h}+{x}+{y}")
+
+    def on_click(self, command):
+        self.destroy()
+        command()
 class ScrollableFrame(tk.Frame):
     def __init__(self, parent, bg_color="#FFFFFF", *args, **kwargs):
         super().__init__(parent, bg=bg_color, *args, **kwargs)
 
-        # 1. The Canvas
+        # The Canvas
         self.canvas = tk.Canvas(self, bg=bg_color, bd=0, highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
 
-        # 2. The Scrollbar
+        # The Scrollbar
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.scrollbar.pack(side="right", fill="y")
         
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # 3. The Internal Frame (This is where your widgets go!)
+        # The Internal Frame
         self.scrollable_content = tk.Frame(self.canvas, bg=bg_color)
         
         # Add the internal frame to the canvas window
@@ -76,23 +179,20 @@ class ScrollableFrame(tk.Frame):
             anchor="nw"
         )
 
-        # 4. Bindings for Resizing
+        # Bindings for Resizing
         self.scrollable_content.bind("<Configure>", self._on_frame_configure)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
         
-        # 5. Mousewheel Scrolling (Optional but recommended)
+        # Mousewheel Scrolling
         self.bind_mouse_scroll()
 
     def _on_frame_configure(self, event):
-        """Reset the scroll region to encompass the inner frame"""
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def _on_canvas_configure(self, event):
-        """Force the inner frame to match the canvas width"""
         self.canvas.itemconfig(self.canvas_window, width=event.width)
 
     def bind_mouse_scroll(self):
-        # Bind mousewheel when mouse enters/leaves the frame
         self.scrollable_content.bind('<Enter>', self._bound_to_mousewheel)
         self.scrollable_content.bind('<Leave>', self._unbound_to_mousewheel)
 

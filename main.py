@@ -1,7 +1,7 @@
 import tkinter as tk
 from config import setup_styles, COLORS
 from database import Database
-from pages import LoginPage, RegisterPage, ListViewPage, KanbanPage
+from pages import LoginPage, RegisterPage, ListViewPage, KanbanPage, SettingsPage
 import os
 
 class TaskApp(tk.Tk):
@@ -19,6 +19,8 @@ class TaskApp(tk.Tk):
         
         setup_styles(self)
         self.db = Database()
+        self.current_user_id = None
+        self.current_user = None
         
         # Container for pages
         self.container = tk.Frame(self, bg=COLORS['primary_bg'])
@@ -30,10 +32,8 @@ class TaskApp(tk.Tk):
         self.init_frames()
         self.show_view("LoginPage")
 
-        self.current_user_id = None
-
     def init_frames(self):
-        for F in (LoginPage, RegisterPage, ListViewPage, KanbanPage):
+        for F in (LoginPage, RegisterPage, ListViewPage, KanbanPage, SettingsPage):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)
             self.frames[page_name] = frame
@@ -45,9 +45,10 @@ class TaskApp(tk.Tk):
         if hasattr(frame, 'refresh'):
             frame.refresh()
 
-    def login_success(self, user_id):
+    def login_success(self, user_id, username):
         self.current_user_id = user_id
-        self.show_view("ListViewPage")
+        self.current_user = username
+        self.show_view("KanbanPage")
 
     def logout(self):
         if tk.messagebox.askyesno("Logout", "Are you sure you want to log out?"):

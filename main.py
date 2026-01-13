@@ -1,7 +1,7 @@
 import tkinter as tk
-from config import setup_styles, COLORS
+from utils.config import setup_styles, COLORS
 from database import Database
-from pages import LoginPage, RegisterPage, ListViewPage, KanbanPage, SettingsPage
+from pages import login, register, listview, kanban, settings, profile
 import os
 
 class TaskApp(tk.Tk):
@@ -33,7 +33,10 @@ class TaskApp(tk.Tk):
         self.show_view("LoginPage")
 
     def init_frames(self):
-        for F in (LoginPage, RegisterPage, ListViewPage, KanbanPage, SettingsPage):
+        for F in (login.LoginPage, register.RegisterPage, 
+                  listview.ListViewPage, kanban.KanbanPage, 
+                  settings.SettingsPage, 
+                  profile.ProfilePage):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)
             self.frames[page_name] = frame

@@ -4,7 +4,7 @@ from tkcalendar import DateEntry
 from datetime import datetime
 import sys
 import os
-from config import COLORS, FONTS
+from utils.config import COLORS, FONTS
 
 class Header(tk.Frame):
     def __init__(self, parent, controller, show_nav=True):
@@ -80,6 +80,7 @@ class Header(tk.Frame):
         menu_options = [
             (f"Header: {username}", None),
             ("---", None),
+            ("Profile", lambda: self.controller.show_view("ProfilePage")),
             ("Settings", lambda: self.controller.show_view("SettingsPage")),
             ("Logout", self.controller.logout)
         ]

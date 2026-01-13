@@ -1,5 +1,6 @@
 import sqlite3
 import bcrypt
+from datetime import datetime
 
 DB_FILE = 'task_management.db'
 
@@ -191,5 +192,58 @@ class Database:
             return True
         except sqlite3.IntegrityError:
             return False # Username taken
+        finally:
+            conn.close()
+
+    def get_analytics(self, user_id):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            today = datetime.now().strftime("%Y-%m-%d")
+
+            cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+            result = cursor.fetchone()
+            username = result['username'] if result else "Unknown"
+
+            # Total Overview
+            cursor.execute("SELECT COUNT(*) as total FROM tasks WHERE user_id = ?", (user_id,))
+            total_tasks = cursor.fetchone()['total']
+
+            # Overdue Count
+            cursor.execute("SELECT COUNT(*) as overdue FROM tasks WHERE user_id = ? AND deadline < ? AND status != 'Done'", (user_id, today))
+            overdue_tasks = cursor.fetchone()['overdue']
+
+            # Group by Category AND Status
+            cursor.execute('''
+                SELECT category, status, COUNT(*) as count 
+                FROM tasks 
+                WHERE user_id = ? 
+                GROUP BY category, status
+            ''', (user_id,))
+            
+            raw_data = cursor.fetchall()
+            
+            # Process into a structured dictionary for the UI
+            matrix = {}
+            for row in raw_data:
+                cat = row['category']
+                status = row['status']
+                count = row['count']
+                
+                if cat not in matrix:
+                    matrix[cat] = {'total': 0, 'Done': 0, 'In Progress': 0, 'To Do': 0}
+                
+                if status not in matrix[cat]:
+                    matrix[cat][status] = 0
+                
+                matrix[cat][status] = count
+                matrix[cat]['total'] += count
+
+            return {
+                'username': username,
+                'total_tasks': total_tasks,
+                'overdue_tasks': overdue_tasks,
+                'matrix': matrix
+            }
         finally:
             conn.close()

@@ -156,55 +156,6 @@ class DropdownMenu(tk.Toplevel):
     def on_click(self, command):
         self.destroy()
         command()
-class ScrollableFrame(tk.Frame):
-    def __init__(self, parent, bg_color="#FFFFFF", *args, **kwargs):
-        super().__init__(parent, bg=bg_color, *args, **kwargs)
-
-        # The Canvas
-        self.canvas = tk.Canvas(self, bg=bg_color, bd=0, highlightthickness=0)
-        self.canvas.pack(side="left", fill="both", expand=True)
-
-        # The Scrollbar
-        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.scrollbar.pack(side="right", fill="y")
-        
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        # The Internal Frame
-        self.scrollable_content = tk.Frame(self.canvas, bg=bg_color)
-        
-        # Add the internal frame to the canvas window
-        self.canvas_window = self.canvas.create_window(
-            (0, 0), 
-            window=self.scrollable_content, 
-            anchor="nw"
-        )
-
-        # Bindings for Resizing
-        self.scrollable_content.bind("<Configure>", self._on_frame_configure)
-        self.canvas.bind("<Configure>", self._on_canvas_configure)
-        
-        # Mousewheel Scrolling
-        self.bind_mouse_scroll()
-
-    def _on_frame_configure(self, event):
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-
-    def _on_canvas_configure(self, event):
-        self.canvas.itemconfig(self.canvas_window, width=event.width)
-
-    def bind_mouse_scroll(self):
-        self.scrollable_content.bind('<Enter>', self._bound_to_mousewheel)
-        self.scrollable_content.bind('<Leave>', self._unbound_to_mousewheel)
-
-    def _bound_to_mousewheel(self, event):
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _unbound_to_mousewheel(self, event):
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
 def create_input_field(parent, label_text, var, row, col, input_type, mask=False):
         label = tk.Label(

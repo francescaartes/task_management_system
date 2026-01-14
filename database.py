@@ -1,28 +1,45 @@
 import sqlite3
 import bcrypt
 from datetime import datetime
+import os
+from pathlib import Path
+import stat
 
-DB_FILE = 'task_management.db'
+APP_NAME = "TaskFlow"
 
+app_data = Path(os.getenv("APPDATA")) / APP_NAME
+app_data.mkdir(parents=True, exist_ok=True)
+
+DB_FILE = app_data / ".syscache" 
 class Database:
     def __init__(self):
         self.init_db()
 
     def get_connection(self):
         try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.execute("PRAGMA foreign_keys = 1")
+            conn = sqlite3.connect(DB_FILE, timeout=10)
             conn.row_factory = self.dict_factory
+
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA temp_store = MEMORY")
+            conn.execute("PRAGMA secure_delete = ON")
+
             return conn
         except Exception as e:
             print(f"Connection Error: {e}")
-            raise e
+            raise
 
     def dict_factory(self, cursor, row):
         d = {}
         for idx, col in enumerate(cursor.description):
             d[col[0]] = row[idx]
         return d
+    
+    def secure_db_file(self):
+        if DB_FILE.exists():
+            os.chmod(DB_FILE, stat.S_IREAD | stat.S_IWRITE)
 
     def init_db(self):
         # Users Table
@@ -55,6 +72,8 @@ class Database:
             conn.commit()
         finally:
             conn.close()
+
+        self.secure_db_file()
 
     def create_user(self, username, password):
         hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -245,5 +264,19 @@ class Database:
                 'overdue_tasks': overdue_tasks,
                 'matrix': matrix
             }
+        finally:
+            conn.close()
+
+    def get_due_today(self, user_id):
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        query = "SELECT title, deadline FROM tasks WHERE user_id = ? AND deadline <= ? AND status != 'Done'"
+        
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, (user_id, today))
+            return cursor.fetchall()
         finally:
             conn.close()

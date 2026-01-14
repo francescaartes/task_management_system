@@ -15,6 +15,7 @@ import tkinter as tk
 # DB_PASS = os.getenv("DB_PASS")
 # DB_PORT = os.getenv("DB_PORT")
 
+# Centralized color palette
 COLORS = {
     'primary_bg': "#F8F8FF",
     'secondary_bg': "#E0E0E8",
@@ -25,6 +26,7 @@ COLORS = {
     'danger': '#FF4444'
 }
 
+# Application font styles
 FONTS = {
     'default': ('Verdana', 12),
     'bold': ('Verdana', 12, 'bold'),
@@ -33,10 +35,12 @@ FONTS = {
 }
 
 def setup_styles(root):
-    """Initialize TTK styles"""
+    """Configure global ttk widget styles"""
+    
     style = tk.ttk.Style()
     style.theme_use('default')
 
+    # Treeview base style
     style.configure(
         "Treeview",
         background=COLORS['primary_bg'],
@@ -45,8 +49,14 @@ def setup_styles(root):
         font=FONTS['default'],
         rowheight=25
     )
-    style.map("Treeview", background=[("selected", COLORS['primary_accent'])])
     
+    # Selected row styling
+    style.map(
+        "Treeview",
+        background=[("selected", COLORS['primary_accent'])]
+    )
+    
+    # Treeview header style
     style.configure(
         "Treeview.Heading",
         background=COLORS['secondary_bg'],
@@ -55,17 +65,22 @@ def setup_styles(root):
         padding=5
     )
 
+    # Combobox dropdown list styles
     root.option_add('*TCombobox*Listbox.background', COLORS['secondary_bg'])
     root.option_add('*TCombobox*Listbox.foreground', COLORS['primary_txt'])
     root.option_add('*TCombobox*Listbox.selectBackground', COLORS['primary_accent'])
     root.option_add('*TCombobox*Listbox.selectForeground', COLORS['secondary_txt'])
 
-    style.map('TCombobox',
+    # Combobox field styles
+    style.map(
+        'TCombobox',
         fieldbackground=[('readonly', COLORS['secondary_bg'])],
         selectbackground=[('readonly', COLORS['secondary_bg'])],
         selectforeground=[('readonly', COLORS['primary_txt'])]
     )
-    style.configure('TCombobox',
+    
+    style.configure(
+        'TCombobox',
         background=COLORS['secondary_bg'],
         foreground=COLORS['primary_txt'],
         arrowcolor=COLORS['primary_txt'],

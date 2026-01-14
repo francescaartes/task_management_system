@@ -20,6 +20,8 @@ class TaskApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
+        self.withdraw()
+
         # Main window settings
         self.title('Task Management System')
         self.geometry('1100x700')
@@ -53,6 +55,7 @@ class TaskApp(tk.Tk):
         self.frames = {}
         self.init_frames()
         self.show_view("LoginPage")
+        self.deiconify()
 
         # Handle window close event
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -60,12 +63,12 @@ class TaskApp(tk.Tk):
     def init_frames(self):
         # Create and store all page frames
         for F in (
-            login.LoginPage,
             register.RegisterPage,
             listview.ListViewPage,
             kanban.KanbanPage,
             settings.SettingsPage,
-            profile.ProfilePage
+            profile.ProfilePage,
+            login.LoginPage
         ):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)

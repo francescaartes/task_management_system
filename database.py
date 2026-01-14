@@ -7,15 +7,20 @@ import stat
 
 APP_NAME = "TaskFlow"
 
+# Application data directory
 app_data = Path(os.getenv("APPDATA")) / APP_NAME
 app_data.mkdir(parents=True, exist_ok=True)
 
+# Database file path
 DB_FILE = app_data / ".syscache" 
+
 class Database:
     def __init__(self):
+        # Initialize database and tables
         self.init_db()
 
     def get_connection(self):
+        # Create and configure a database connection
         try:
             conn = sqlite3.connect(DB_FILE, timeout=10)
             conn.row_factory = self.dict_factory
@@ -32,26 +37,29 @@ class Database:
             raise
 
     def dict_factory(self, cursor, row):
+        # Convert query results into dictionaries
         d = {}
         for idx, col in enumerate(cursor.description):
             d[col[0]] = row[idx]
         return d
     
     def secure_db_file(self):
+        # Restrict database file permissions
         if DB_FILE.exists():
             os.chmod(DB_FILE, stat.S_IREAD | stat.S_IWRITE)
 
     def init_db(self):
-        # Users Table
+        # User accounts table
         create_users = '''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL
             );
         '''
 
-        # Tasks Table
+        # Tasks table
         create_tasks = '''
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +72,7 @@ class Database:
             );
         '''
 
+        # Tags master table
         create_tags = '''
             CREATE TABLE IF NOT EXISTS tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +80,7 @@ class Database:
             );
         '''
 
+        # Task–tag relationship table
         create_task_tags = '''
             CREATE TABLE IF NOT EXISTS task_tags (
                 task_id INTEGER,
@@ -94,18 +104,19 @@ class Database:
 
         self.secure_db_file()
 
-    def create_user(self, username, password):
+    def create_user(self, username, email, password):
+        # Create a new user with hashed password
         hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        query = "INSERT INTO users (username, password_hash) VALUES (?, ?)"
+        query = "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)"
         
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute(query, (username, hashed_pw.decode('utf-8')))
+            cursor.execute(query, (username, email, hashed_pw.decode('utf-8')))
             conn.commit()
             return True
         except sqlite3.IntegrityError:
-            # Username taken
+            # Duplicate username
             return False
         except Exception as e:
             print(f"Register Error: {e}")
@@ -114,6 +125,7 @@ class Database:
             conn.close()
 
     def verify_user(self, username, password):
+        # Validate user login credentials
         query = "SELECT id, password_hash FROM users WHERE username = ?"
         
         conn = self.get_connection()
@@ -129,8 +141,20 @@ class Database:
             return None
         finally:
             conn.close()
+
+    def get_user_by_email(self, email):
+        # To find a user by email
+        query = "SELECT id, username FROM users WHERE email = ?"
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, (email,))
+            return cursor.fetchone() # Returns None if not found
+        finally:
+            conn.close()
     
     def get_all_tasks(self, user_id):
+        # Retrieve all tasks for a user
         query = "SELECT * FROM tasks WHERE user_id = ? ORDER BY id"
         conn = self.get_connection()
         try:
@@ -141,6 +165,7 @@ class Database:
             conn.close()
 
     def add_task(self, data, user_id):
+        # Insert a new task and assign tags
         tags_input = data.pop('tags', '')
 
         query = '''
@@ -161,6 +186,7 @@ class Database:
             conn.close()
 
     def update_task(self, task_id, data):
+        # Update task details and tags
         tags_input = data.pop('tags', '')
 
         query = '''
@@ -179,6 +205,7 @@ class Database:
             conn.close()
 
     def update_status(self, task_id, new_status):
+        # Change task status only
         query = "UPDATE tasks SET status=? WHERE id=?"
         conn = self.get_connection()
         try:
@@ -189,6 +216,7 @@ class Database:
             conn.close()
 
     def delete_task(self, task_id):
+        # Remove a task
         query = "DELETE FROM tasks WHERE id = ?"
         conn = self.get_connection()
         try:
@@ -199,6 +227,7 @@ class Database:
             conn.close()
     
     def search_tasks(self, user_id, query):
+        # Search tasks by text fields
         search_term = f"%{query}%"
         
         sql = '''
@@ -217,19 +246,19 @@ class Database:
             conn.close()
 
     def update_credentials(self, user_id, new_username, new_password):
+        # Update username and/or password
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             
-            # Udate BOTH or just Password
+            # Update username and password
             if new_password:
                 hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
                 cursor.execute(
                     "UPDATE users SET username=?, password_hash=? WHERE id=?",
                     (new_username, hashed_pw.decode('utf-8'), user_id)
                 )
-            
-            # Only update Username
+            # Update username only
             else:
                 cursor.execute(
                     "UPDATE users SET username=? WHERE id=?",
@@ -239,11 +268,13 @@ class Database:
             conn.commit()
             return True
         except sqlite3.IntegrityError:
-            return False # Username taken
+            # Username already exists
+            return False
         finally:
             conn.close()
 
     def get_analytics(self, user_id):
+        # Generate task statistics for dashboard
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -253,15 +284,18 @@ class Database:
             result = cursor.fetchone()
             username = result['username'] if result else "Unknown"
 
-            # Total Overview
+            # Count all tasks
             cursor.execute("SELECT COUNT(*) as total FROM tasks WHERE user_id = ?", (user_id,))
             total_tasks = cursor.fetchone()['total']
 
-            # Overdue Count
-            cursor.execute("SELECT COUNT(*) as overdue FROM tasks WHERE user_id = ? AND deadline < ? AND status != 'Done'", (user_id, today))
+            # Count overdue tasks
+            cursor.execute(
+                "SELECT COUNT(*) as overdue FROM tasks WHERE user_id = ? AND deadline < ? AND status != 'Done'",
+                (user_id, today)
+            )
             overdue_tasks = cursor.fetchone()['overdue']
 
-            # Group by Category AND Status
+            # Count tasks by category and status
             cursor.execute('''
                 SELECT category, status, COUNT(*) as count 
                 FROM tasks 
@@ -271,7 +305,7 @@ class Database:
             
             raw_data = cursor.fetchall()
             
-            # Process into a structured dictionary for the UI
+            # Organize results for UI display
             matrix = {}
             for row in raw_data:
                 cat = row['category']
@@ -297,9 +331,9 @@ class Database:
             conn.close()
 
     def get_due_today(self, user_id):
+        # Fetch tasks due today or earlier
         today = datetime.now().strftime("%Y-%m-%d 23:59") 
         
-        # Compare deadline
         query = "SELECT title, deadline FROM tasks WHERE user_id = ? AND deadline <= ? AND status != 'Done'"
         
         conn = self.get_connection()
@@ -311,6 +345,7 @@ class Database:
             conn.close()
 
     def get_tasks_with_tags(self, user_id):
+        # Retrieve tasks with their associated tags
         query = '''
             SELECT 
                 t.id, 
@@ -336,11 +371,13 @@ class Database:
             conn.close()
 
     def set_task_tags(self, conn, task_id, tag_string):
+        # Assign tags to a task
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
         
-        if not tag_string: return
+        if not tag_string:
+            return
 
         tags = [t.strip() for t in tag_string.split(',') if t.strip()]
         
@@ -354,13 +391,16 @@ class Database:
                 cursor.execute("INSERT INTO tags (name) VALUES (?)", (tag_name,))
                 tag_id = cursor.lastrowid
 
-            cursor.execute("INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?)", (task_id, tag_id))
+            cursor.execute(
+                "INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?)",
+                (task_id, tag_id)
+            )
 
     def get_filtered_tasks(self, user_id, filters):
         """
-        filters: dict -> {'category': 'Work', 'tag': 'urgent', 'timeframe': 'overdue'}
+        Apply category, status, tag, timeframe, and search filters.
         """
-        # Base Query (reusing the complex JOIN logic to get tags)
+        # Base query with tag joins
         sql = '''
             SELECT 
                 t.id, t.title, t.category, t.status, t.deadline, t.description,
@@ -372,20 +412,19 @@ class Database:
         '''
         params = [user_id]
 
-        # 1. FILTER: Category (Exact Match)
+        # Filter by category
         if filters.get('category') and filters['category'] != 'All Categories':
             sql += " AND t.category = ?"
             params.append(filters['category'])
 
-        # 2. FILTER: Status (Exact Match - mostly for List View)
+        # Filter by status
         if filters.get('status') and filters['status'] != 'All Status':
             sql += " AND t.status = ?"
             params.append(filters['status'])
 
-        # 3. FILTER
+        # Filter by tag
         tag_search = filters.get('tag')
         if tag_search:
-            # Subquery: Find task_ids that have this tag
             sql += ''' AND t.id IN (
                         SELECT tt.task_id FROM task_tags tt 
                         JOIN tags tg ON tt.tag_id = tg.id 
@@ -393,7 +432,7 @@ class Database:
                       )'''
             params.append(f"%{tag_search}%")
 
-        # 4. FILTER: Timeframe (Date Logic)
+        # Filter by timeframe
         timeframe = filters.get('timeframe')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
@@ -401,7 +440,6 @@ class Database:
             sql += " AND t.deadline < ? AND t.status != 'Done'"
             params.append(now_str)
         elif timeframe == 'Due Today':
-            # Matches today's date (ignoring time for the start match)
             today_start = datetime.now().strftime("%Y-%m-%d 00:00")
             today_end = datetime.now().strftime("%Y-%m-%d 23:59")
             sql += " AND t.deadline BETWEEN ? AND ?"
@@ -412,12 +450,13 @@ class Database:
             sql += " AND t.deadline BETWEEN ? AND ?"
             params.extend([today_start, next_week])
 
+        # Filter by title search
         search_query = filters.get('search')
         if search_query:
             sql += " AND t.title LIKE ?"
             params.append(f"%{search_query}%")
 
-        # Finalize Query
+        # Final query
         sql += " GROUP BY t.id ORDER BY t.deadline"
         
         conn = self.get_connection()
@@ -428,12 +467,15 @@ class Database:
         finally:
             conn.close()
 
-    # Helper to populate Category Dropdown
+    # Retrieve unique task categories
     def get_all_categories(self, user_id):
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT category FROM tasks WHERE user_id = ?", (user_id,))
+            cursor.execute(
+                "SELECT DISTINCT category FROM tasks WHERE user_id = ?",
+                (user_id,)
+            )
             return [row['category'] for row in cursor.fetchall()]
         finally:
             conn.close()

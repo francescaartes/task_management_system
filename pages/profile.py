@@ -4,76 +4,106 @@ from utils.config import COLORS, FONTS
 from utils.components import Header, create_input_field
 
 class ProfilePage(tk.Frame):
+    """Displays user profile and task analytics"""
+
     def __init__(self, parent, controller):
         super().__init__(parent, bg=COLORS['primary_bg'])
         self.controller = controller
         Header(self, controller, show_nav=True).pack(fill='x')
 
+        # Holds aggregated analytics data
         self.data_matrix = {}
 
-        # Container
+        # Main container
         container = tk.Frame(self, bg=COLORS['primary_bg'], padx=40, pady=20)
         container.pack(fill='both', expand=True)
 
-        # Header + Overview
+        # ===== USER OVERVIEW =====
         header_frame = tk.Frame(container, bg=COLORS['primary_bg'])
         header_frame.pack(fill='x', pady=(0, 30))
         
-        # User Icon
-        tk.Label(header_frame, text="👤", font=("Arial", 40), bg=COLORS['primary_bg'], fg=COLORS['primary_accent']).pack(side='left', padx=(0, 20))
+        # User avatar placeholder
+        tk.Label(
+            header_frame, text="👤", font=("Arial", 40),
+            bg=COLORS['primary_bg'], fg=COLORS['primary_accent']
+        ).pack(side='left', padx=(0, 20))
         
-        # Stats Text
+        # Username display
         username = getattr(self.controller, 'current_user', 'User')
-        self.username_lbl = tk.Label(header_frame, text=username, font=FONTS['header'], bg=COLORS['primary_bg'], fg=COLORS['primary_accent'])
+        self.username_lbl = tk.Label(
+            header_frame, text=username, font=FONTS['header'],
+            bg=COLORS['primary_bg'], fg=COLORS['primary_accent']
+        )
         self.username_lbl.pack(anchor='w')
         
-        self.total_lbl = tk.Label(header_frame, text="Total Tasks: 0", font=FONTS['default'], bg=COLORS['primary_bg'], fg='gray')
+        # Total task count
+        self.total_lbl = tk.Label(
+            header_frame, text="Total Tasks: 0",
+            font=FONTS['default'], bg=COLORS['primary_bg'], fg='gray'
+        )
         self.total_lbl.pack(anchor='w')
         
-        # Overdue badge
-        self.overdue_lbl = tk.Label(header_frame, text="0 Overdue Task/s", font=FONTS['bold'], bg=COLORS['primary_bg'], fg=COLORS['primary_accent'])
+        # Overdue task indicator
+        self.overdue_lbl = tk.Label(
+            header_frame, text="0 Overdue Task/s",
+            font=FONTS['bold'], bg=COLORS['primary_bg'], fg=COLORS['primary_accent']
+        )
         self.overdue_lbl.pack(anchor='w', pady=(5, 0))
 
-        # Analytics area
-        control_frame = tk.Frame(container, bg=COLORS['primary_bg'], padx=20, pady=20, bd=1, relief='groove')
+        # ===== ANALYTICS SECTION =====
+        control_frame = tk.Frame(
+            container, bg=COLORS['primary_bg'],
+            padx=20, pady=20, bd=1, relief='groove'
+        )
         control_frame.pack(fill='both', expand=True)
         
-        tk.Label(control_frame, text="Tasks Analytics", font=FONTS['header'], bg=COLORS['primary_bg'], fg=COLORS['primary_accent']).pack(anchor='w', pady=(0, 15))
+        tk.Label(
+            control_frame, text="Tasks Analytics",
+            font=FONTS['header'], bg=COLORS['primary_bg'],
+            fg=COLORS['primary_accent']
+        ).pack(anchor='w', pady=(0, 15))
         
-        # Dropdown for Category Selection
+        # Category selector
         self.cat_var = tk.StringVar()
-        self.cat_dropdown = ttk.Combobox(control_frame, textvariable=self.cat_var, state='readonly', font=FONTS['default'])
+        self.cat_dropdown = ttk.Combobox(
+            control_frame, textvariable=self.cat_var,
+            state='readonly', font=FONTS['default']
+        )
         self.cat_dropdown.pack(fill='x', pady=(0, 20))
         self.cat_dropdown.bind("<<ComboboxSelected>>", self.update_charts)
 
-        # Chart Container
+        # Chart display area
         self.chart_frame = tk.Frame(control_frame, bg=COLORS['primary_bg'])
         self.chart_frame.pack(fill='both', expand=True)
         
-        # Initial Placeholder
-        tk.Label(self.chart_frame, text="Select a category above to view analytics.", bg=COLORS['primary_bg'], fg='gray').pack(pady=20)
+        # Default message
+        tk.Label(
+            self.chart_frame,
+            text="Select a category above to view analytics.",
+            bg=COLORS['primary_bg'], fg='gray'
+        ).pack(pady=20)
 
     def tkraise(self, *args, **kwargs):
         super().tkraise(*args, **kwargs)
         self.refresh_data()
 
     def refresh_data(self):
+        """Fetch and refresh analytics from the database"""
         user_id = self.controller.current_user_id
-        username = getattr(self.controller, 'current_user', 'User') 
+        username = getattr(self.controller, 'current_user', 'User')
         self.username_lbl.config(text=username)
         
-        if not user_id: return
+        if not user_id:
+            return
 
-        # Fetch Complex Data from DB
-        analytics = self.controller.db.get_analytics(user_id) 
-        
+        # Retrieve analytics data
+        analytics = self.controller.db.get_analytics(user_id)
         self.data_matrix = analytics['matrix']
         self.total_lbl.config(text=f"Total Tasks: {analytics['total_tasks']}")
-        
-        # Container for the totals
+
+        # Aggregate stats across all categories
         all_stats = {'total': 0, 'To Do': 0, 'In Progress': 0, 'Done': 0}
         
-        # Loop through every category and sum their stats
         for cat_data in self.data_matrix.values():
             all_stats['total'] += cat_data.get('total', 0)
             all_stats['To Do'] += cat_data.get('To Do', 0)
@@ -82,67 +112,77 @@ class ProfilePage(tk.Frame):
             
         self.data_matrix['All Categories'] = all_stats
 
-        # Update Overdue Warning
+        # Update overdue status
         od = analytics['overdue_tasks']
         if od > 0:
             self.overdue_lbl.config(text=f"⚠ {od} Tasks Overdue!", fg='#ff4444')
         else:
             self.overdue_lbl.config(text="✓ No Overdue Tasks", fg='#00C851')
 
-        # Populate Dropdown
+        # Populate category dropdown
         categories = [k for k in self.data_matrix.keys() if k != 'All Categories']
-        categories.sort() 
+        categories.sort()
         categories.insert(0, 'All Categories')
         
         self.cat_dropdown['values'] = categories
         
         if categories:
-            self.cat_dropdown.current(0) # Select "All Categories" automatically
-            self.update_charts() 
+            self.cat_dropdown.current(0)
+            self.update_charts()
         else:
             self.cat_var.set("No Categories Found")
 
     def update_charts(self, event=None):
-        # Clear previous charts
-        for widget in self.chart_frame.winfo_children(): widget.destroy()
+        """Render progress bars based on selected category"""
+        # Clear previous chart widgets
+        for widget in self.chart_frame.winfo_children():
+            widget.destroy()
         
         category = self.cat_var.get()
-        if category not in self.data_matrix: return
+        if category not in self.data_matrix:
+            return
 
         data = self.data_matrix[category]
         total = data['total']
         
-        if total == 0: return
+        if total == 0:
+            return
 
-        # Helper to draw a bar
+        # Helper to render a single progress bar
         def draw_bar(label, value, count):
             percent = (count / total) * 100
             
-            # Row Container
+            # Row wrapper
             row = tk.Frame(self.chart_frame, bg=COLORS['primary_bg'], pady=5)
             row.pack(fill='x')
             
-            # Text Labels
+            # Labels
             lbl_frame = tk.Frame(row, bg=COLORS['primary_bg'])
             lbl_frame.pack(fill='x')
-            tk.Label(lbl_frame, text=label, font=FONTS['bold'], bg=COLORS['primary_bg'], fg=COLORS['primary_accent']).pack(side='left')
-            tk.Label(lbl_frame, text=f"{int(percent)}% ({count})", font=FONTS['small'], bg=COLORS['primary_bg'], fg=COLORS['primary_accent']).pack(side='right')
+            tk.Label(
+                lbl_frame, text=label, font=FONTS['bold'],
+                bg=COLORS['primary_bg'], fg=COLORS['primary_accent']
+            ).pack(side='left')
+            tk.Label(
+                lbl_frame, text=f"{int(percent)}% ({count})",
+                font=FONTS['small'], bg=COLORS['primary_bg'],
+                fg=COLORS['primary_accent']
+            ).pack(side='right')
 
-            # Progress Bar (Bottom)
-            canvas = tk.Canvas(row, height=10, bg=COLORS['primary_bg'], bd=0, highlightthickness=0)
-            canvas.pack(fill='x', pady=0)
-            
-            # Draw filled portion
-            bar_width = (percent / 100) * self.chart_frame.winfo_width() 
-            
-            # Frame as a bar
-            progress_bg = tk.Frame(row, height=20, bg=COLORS['primary_bg'], bd=1, relief='solid') # track
-            progress_bg.pack(fill='x', pady=0)
-            
-            fill_bar = tk.Frame(progress_bg, height=20, bg=COLORS['primary_accent'])
-            fill_bar.place(relx=0, rely=0, relheight=1, relwidth=(percent/100))
+            # Progress bar track
+            progress_bg = tk.Frame(
+                row, height=20, bg=COLORS['primary_bg'],
+                bd=1, relief='solid'
+            )
+            progress_bg.pack(fill='x')
 
-        # DRAW THE 3 BARS
+            # Filled bar
+            fill_bar = tk.Frame(
+                progress_bg, height=20, bg=COLORS['primary_accent']
+            )
+            fill_bar.place(relx=0, rely=0, relheight=1, relwidth=(percent / 100))
+
+        # Draw status bars
         todo = data.get('To Do', 0)
         draw_bar("To Do", todo, todo)
 

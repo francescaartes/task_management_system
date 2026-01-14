@@ -8,6 +8,7 @@ import threading
 import time
 from plyer import notification
 import ctypes
+import sys
 
 # Windows App ID for notifications
 myappid = 'taskflow.app'
@@ -15,6 +16,14 @@ try:
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 except ImportError:
     pass
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class TaskApp(tk.Tk):
     def __init__(self):
@@ -145,11 +154,9 @@ class TaskApp(tk.Tk):
                 if tasks:
                     count = len(tasks)
                     title_text = "TaskFlow Reminder"
-                    msg_text = f"You have {count} task/s due today!"
+                    msg_text = f"You have {count} task/s due or overdue today!"
 
-                    icon_path = os.path.abspath(
-                        os.path.join("assets", "icon.ico")
-                    )
+                    icon_path = resource_path(os.path.join("assets", "icon.ico"))
 
                     try:
                         # Show desktop notification
@@ -163,8 +170,8 @@ class TaskApp(tk.Tk):
                     except Exception as e:
                         print(f"Notification failed: {e}")
 
-            # Check again after 1 hour
-            for _ in range(3600):
+            # Check again after 6 hours
+            for _ in range(21600):
                 if self.stop_thread:
                     break
                 time.sleep(1)

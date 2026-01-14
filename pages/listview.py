@@ -1,14 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from utils.config import COLORS, FONTS
-from utils.components import Header, create_input_field
+from utils.components import Header, create_input_field, FilterBar
 
 class ListViewPage(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg=COLORS['primary_bg'])
         self.controller = controller
         Header(self, controller, show_nav=True).pack(fill='x')
-        
+
         self.selected_id = None
         self.setup_ui()
         
@@ -23,7 +23,7 @@ class ListViewPage(tk.Frame):
         
         # Inputs
         self.vars = {
-            'title': tk.StringVar(), 'category': tk.StringVar(),
+            'title': tk.StringVar(), 'category': tk.StringVar(), 'tags': tk.StringVar(),
             'status': tk.StringVar(), 'deadline': tk.StringVar()
         }
         input_frame = tk.Frame(sidebar, bg=COLORS['primary_bg'], padx=10, pady=10)
@@ -32,9 +32,10 @@ class ListViewPage(tk.Frame):
         
         create_input_field(input_frame, 'Title:', self.vars['title'], 0, 0, 'entry')
         create_input_field(input_frame, 'Category:', self.vars['category'], 1, 0, 'entry')
-        create_input_field(input_frame, 'Status:', self.vars['status'], 2, 0, 'dropdown')
-        create_input_field(input_frame, 'Deadline:', self.vars['deadline'], 3, 0, 'date_picker')
-        self.description = create_input_field(input_frame, 'Description:', None, 4, 0, 'textarea')
+        create_input_field(input_frame, 'Tags (#):', self.vars['tags'], 2, 0, 'entry')
+        create_input_field(input_frame, 'Status:', self.vars['status'], 3, 0, 'dropdown')
+        create_input_field(input_frame, 'Deadline:', self.vars['deadline'], 4, 0, 'date_picker')
+        self.description = create_input_field(input_frame, 'Description:', None, 5, 0, 'textarea')
 
         # Buttons
         btn_frame = tk.Frame(sidebar, bg=COLORS['primary_bg'], pady=10)
@@ -48,54 +49,35 @@ class ListViewPage(tk.Frame):
             tk.Button(btn_frame, text=text, command=cmd, font=FONTS['bold'], 
                       bg=COLORS['primary_accent'], fg='white').pack(fill='x', padx=15, pady=5)
 
-        search_frame = tk.Frame(content, bg=COLORS['primary_bg'], pady=10)
-        search_frame.pack(fill='x')
+        filter_frame = tk.Frame(content, bg=COLORS['primary_bg'])
+        filter_frame.pack(fill='x')
 
-        self.search_var = tk.StringVar()
-        
-        # Search Entry
-        search_entry = tk.Entry(
-            search_frame, 
-            textvariable=self.search_var, 
-            font=FONTS['default'],
-            bg=COLORS['secondary_bg'],
-            fg=COLORS['primary_txt'],
-            insertbackground=COLORS['primary_accent'],
-            relief='flat', bd=0, highlightthickness=1,
-            highlightbackground=COLORS['primary_accent']
-        )
-        search_entry.pack(side='left', fill='x', expand=True, padx=(0, 10), ipady=5)
-        search_entry.bind('<Return>', self.perform_search) # Bind Enter Key
-
-        # Search Button
-        tk.Button(search_frame, text="Search", command=self.perform_search,
-                  bg=COLORS['primary_accent'], fg='white', font=FONTS['bold'], width=10
-                  ).pack(side='left', padx=(0, 5))
-
-        # Reset Button
-        tk.Button(search_frame, text="Reset", command=self.reset_search,
-                  bg=COLORS['secondary_bg'], fg=COLORS['primary_txt'], font=FONTS['bold'], width=8
-                  ).pack(side='left')
+        self.filter_bar = FilterBar(filter_frame, self.controller, on_filter_command=self.refresh)
+        self.filter_bar.pack(fill='x')
 
         # Table
         self.setup_table(content)
         
     def setup_table(self, parent):
         y_tree_scroll = ttk.Scrollbar(parent, orient='vertical')
+        x_tree_scroll = ttk.Scrollbar(parent, orient="horizontal")
         y_tree_scroll.pack(side='right', fill='y')
+        x_tree_scroll.pack(side='bottom', fill='x')
         
         self.tree = ttk.Treeview(
             parent, 
-            columns=("Id", "Title", "Category", "Status", "Deadline", "Description"),
+            columns=("Id", "Title", "Category", "Status", "Deadline", "Description", "Tags"),
             show='headings',
             yscrollcommand=y_tree_scroll.set, 
+            xscrollcommand=x_tree_scroll.set, 
         )
         self.tree.pack(side='left', fill='both', expand=True)
         y_tree_scroll.config(command=self.tree.yview)
+        x_tree_scroll.config(command=self.tree.xview)
 
         column_config = [
-            ("Id", 0, 'w'), ("Title", 150, 'w'), ("Category", 100, 'center'),
-            ("Status", 100, 'center'), ("Deadline", 100, 'center'), ("Description", 200, 'w') 
+            ("Id", 0, 'w'), ("Title", 150, 'w'), ("Category", 100, 'center'), ("Status", 100, 'center'), 
+            ("Deadline", 100, 'center'), ("Description", 200, 'w'), ("Tags", 100, 'w')
         ]
 
         for col, width, pos in column_config:
@@ -129,14 +111,28 @@ class ListViewPage(tk.Frame):
         self.search_var.set("")
         self.refresh()
 
-    def refresh(self):
-        user_id = self.controller.current_user_id
-        for item in self.tree.get_children(): 
+    def refresh(self, filters=None):
+        if hasattr(self, 'filter_bar'):
+            self.filter_bar.refresh_options()
+            
+        # Clear Tree
+        for item in self.tree.get_children():
             self.tree.delete(item)
 
-        # Standard refresh gets ALL tasks
-        for task in self.controller.db.get_all_tasks(user_id):
-            self.tree.insert('', 'end', values=list(task.values()))
+        user_id = self.controller.current_user_id
+        
+        # Fetch Data (Database now handles 'search' key inside filters)
+        if filters:
+            tasks = self.controller.db.get_filtered_tasks(user_id, filters)
+        else:
+            tasks = self.controller.db.get_tasks_with_tags(user_id)
+
+        # Populate
+        for task in tasks:
+            # Ensure order matches columns
+            values = [task['id'], task['title'], task['category'], task['status'], 
+                      task['deadline'], task['description'], task.get('tags', '')]
+            self.tree.insert('', 'end', values=values)
 
     def on_select(self, event):
         sel = self.tree.selection()
@@ -145,6 +141,7 @@ class ListViewPage(tk.Frame):
         self.selected_id = vals[0]
         self.vars['title'].set(vals[1])
         self.vars['category'].set(vals[2])
+        self.vars['tags'].set(vals[6])
         self.vars['status'].set(vals[3])
         self.vars['deadline'].set(vals[4])
         self.description.delete('1.0', tk.END)
@@ -217,7 +214,6 @@ class ListViewPage(tk.Frame):
                 "Please select a task first by clicking on it in the table."
             )
             return
-
 
     def delete_task(self):
         if not self.selected_id:

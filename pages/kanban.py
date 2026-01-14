@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from utils.config import COLORS, FONTS
-from utils.components import Header, create_input_field 
+from utils.components import Header, create_input_field, FilterBar
 
 class TaskModal(tk.Toplevel):
     def __init__(self, parent, task=None, on_save=None):
@@ -31,6 +31,7 @@ class TaskModal(tk.Toplevel):
         # Variables
         self.title_var = tk.StringVar()
         self.cat_var = tk.StringVar()
+        self.tags_var = tk.StringVar()
         self.status_var = tk.StringVar(value="To Do")
         self.date_var = tk.StringVar()
         
@@ -48,24 +49,26 @@ class TaskModal(tk.Toplevel):
         # Fields
         create_input_field(self.container, "Title:", self.title_var, 0, 0, 'entry')
         self.cat_cb = create_input_field(self.container, "Category:", self.cat_var, 1, 0, 'entry')
-        create_input_field(self.container, "Status:", self.status_var, 2, 0, 'dropdown')
-        create_input_field(self.container, "Deadline:", self.date_var, 3, 0, 'date_picker')
-        self.desc_text = create_input_field(self.container, "Description:", None, 4, 0, 'textarea')
+        create_input_field(self.container, "Tags (#):", self.tags_var, 2, 0, 'entry')
+        create_input_field(self.container, "Status:", self.status_var, 3, 0, 'dropdown')
+        create_input_field(self.container, "Deadline:", self.date_var, 4, 0, 'date_picker')
+        self.desc_text = create_input_field(self.container, "Description:", None, 5, 0, 'textarea')
 
         # Buttons
         btn_frame = tk.Frame(self.container, bg=COLORS['primary_bg'])
-        btn_frame.grid(row=6, column=0, columnspan=2, pady=25, sticky='e')
+        btn_frame.grid(row=7, column=0, columnspan=2, pady=25, sticky='e')
 
-        tk.Button(btn_frame, text="Save", bg=COLORS['primary_accent'], fg='white', font=FONTS['bold'],
+        tk.Button(btn_frame, text="Save", bg=COLORS['primary_accent'], fg=COLORS['primary_bg'], font=FONTS['bold'],
                   command=self.save_data).pack(side='right', padx=5)
         
-        tk.Button(btn_frame, text="Cancel", bg='gray', fg='white', font=FONTS['bold'],
+        tk.Button(btn_frame, text="Cancel", bg=COLORS['secondary_bg'], fg=COLORS['primary_txt'], font=FONTS['bold'],
                   command=self.destroy).pack(side='right', padx=5)
 
     def _populate_data(self):
         """Populate fields with existing task data"""
         self.title_var.set(self.task.get('title', ''))
         self.cat_var.set(self.task.get('category', ''))
+        self.tags_var.set(self.task.get('tags', ''))
         self.status_var.set(self.task.get('status', 'To Do'))
         self.date_var.set(self.task.get('deadline', ''))
         
@@ -76,6 +79,7 @@ class TaskModal(tk.Toplevel):
         data = {
             "title": self.title_var.get(),
             "category": self.cat_var.get(),
+            "tags": self.tags_var.get(),
             "status": self.status_var.get(),
             "deadline": self.date_var.get(),
             "description": self.desc_text.get("1.0", "end-1c").strip()
@@ -91,39 +95,63 @@ class TaskModal(tk.Toplevel):
 
 class KanbanPage(tk.Frame):
     def __init__(self, parent, controller):
-        super().__init__(parent, bg=COLORS['secondary_bg'])
+        super().__init__(parent, bg=COLORS['primary_bg'])
         self.controller = controller
         Header(self, controller, show_nav=True).pack(fill='x')
         
         # Controls Area
-        action_bar = tk.Frame(self, bg=COLORS['secondary_bg'])
+        action_bar = tk.Frame(self, bg=COLORS['primary_bg'])
         action_bar.pack(fill='x', padx=20, pady=0)
         
         # Add Task Button
-        tk.Button(action_bar, text="+ Add Task", bg=COLORS['primary_accent'], fg='white', 
-                  font=FONTS['bold'], padx=15, pady=5, bd=0,
-                  command=self.open_add_modal).pack(side='left')
+        tk.Button(action_bar, text="➕\nAdd Task", bg=COLORS['primary_accent'], fg=COLORS['primary_bg'], 
+                  font=FONTS['bold'],
+                  command=self.open_add_modal).pack(side='left', fill='both')
+        
+        self.filter_bar = FilterBar(action_bar, self.controller, on_filter_command=self.refresh)
+        self.filter_bar.pack(fill='x', padx=(20, 0))
         
         # Board Container
-        self.board = tk.Frame(self, bg=COLORS['secondary_bg'])
+        self.board = tk.Frame(self, bg=COLORS['primary_bg'])
         self.board.pack(fill='both', expand=True, padx=(20, 0), pady=20)
         
         self.columns = {}
         self.drag_data = {"ghost": None, "task_id": None, "offset_x": 0, "offset_y": 0}
 
-    def refresh(self):
-        """Re-fetches tasks and redraws the board"""
+    def tkraise(self, *args, **kwargs):
+        super().tkraise(*args, **kwargs)
+        # This triggers self.refresh(), which reloads tasks AND dropdowns
+        self.refresh()
+
+    def refresh(self, filters=None):
+        """Re-fetches tasks (optionally filtered) and redraws the board"""
+        
+        # 1. Update Dropdowns (in case new categories exist)
+        if hasattr(self, 'filter_bar'):
+            self.filter_bar.refresh_options()
+
+        # 2. Clear Board
         for widget in self.board.winfo_children(): widget.destroy()
         self.columns = {} 
         
         user_id = self.controller.current_user_id
-        tasks = self.controller.db.get_all_tasks(user_id)
         
+        # 3. FETCH DATA
+        if filters:
+            # Use the complex search/filter query
+            tasks = self.controller.db.get_filtered_tasks(user_id, filters)
+        else:
+            # Default: Get everything (with tags)
+            tasks = self.controller.db.get_tasks_with_tags(user_id)
+        
+        # 4. Draw Columns & Cards
         for i, status in enumerate(['To Do', 'In Progress', 'Done']):
             outer_frame, inner_frame = self.create_column_widget(self.board, status, i)
             self.columns[status] = outer_frame
 
+            # Filter the fetched list for this specific column status
             current_tasks = [t for t in tasks if t['status'] == status]
+            
             for task in current_tasks:
                 self.create_card(inner_frame, task)
 
@@ -175,7 +203,10 @@ class KanbanPage(tk.Frame):
     def create_card(self, parent, task):
         card = tk.Frame(parent, bg='white', bd=1, relief='raised', padx=10, pady=10)
         card.pack(fill='x', padx=5, pady=5)
-        
+
+        tags_str = task.get('tags', '')
+        self.display_tags(card, tags_str)
+
         tk.Label(
             card, text=task['title'], 
             font=FONTS['bold'], 
@@ -211,7 +242,26 @@ class KanbanPage(tk.Frame):
                 child.bind("<Button-2>", do_popup)
             else:
                 child.bind("<Button-3>", do_popup)
-            child.bind("<Double-Button-1>", lambda e: self.open_details_modal(task))    
+            child.bind("<Double-Button-1>", lambda e: self.open_details_modal(task))
+
+    def display_tags(self, parent, tags_str):
+        if tags_str:
+            tag_frame = tk.Frame(parent, bg='white')
+            tag_frame.pack(anchor='w', fill='x', pady=(0, 6))
+            
+            # Split string and create a "Chip" for each tag
+            for tag_text in tags_str.split(','):
+                tag_text = tag_text.strip()
+                if tag_text:
+                    chip = tk.Label(
+                        tag_frame, 
+                        text=tag_text, 
+                        font=FONTS['small'],
+                        bg=COLORS['secondary_bg'],
+                        fg=COLORS['primary_txt'],
+                        padx=6, pady=2 
+                    )
+                    chip.pack(side='left', padx=(0, 5))
 
     def drag_start(self, event, card, task_id, title):
         self.drag_data["task_id"] = task_id

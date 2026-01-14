@@ -1,6 +1,6 @@
 import sqlite3
 import bcrypt
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from pathlib import Path
 import stat
@@ -64,11 +64,30 @@ class Database:
             );
         '''
 
+        create_tags = '''
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL
+            );
+        '''
+
+        create_task_tags = '''
+            CREATE TABLE IF NOT EXISTS task_tags (
+                task_id INTEGER,
+                tag_id INTEGER,
+                PRIMARY KEY (task_id, tag_id),
+                FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+        '''
+
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(create_users)
             cursor.execute(create_tasks)
+            cursor.execute(create_tags)
+            cursor.execute(create_task_tags)
             conn.commit()
         finally:
             conn.close()
@@ -122,6 +141,8 @@ class Database:
             conn.close()
 
     def add_task(self, data, user_id):
+        tags_input = data.pop('tags', '')
+
         query = '''
             INSERT INTO tasks (user_id, title, category, status, deadline, description)
             VALUES (:user_id, :title, :category, :status, :deadline, :description)
@@ -130,11 +151,18 @@ class Database:
         try:
             cursor = conn.cursor()
             cursor.execute(query, {**data, 'user_id': user_id})
+
+            new_task_id = cursor.lastrowid
+            if tags_input:
+                self.set_task_tags(conn, new_task_id, tags_input)
+
             conn.commit()
         finally:
             conn.close()
 
     def update_task(self, task_id, data):
+        tags_input = data.pop('tags', '')
+
         query = '''
             UPDATE tasks 
             SET title=:title, category=:category, status=:status, 
@@ -145,6 +173,7 @@ class Database:
         try:
             cursor = conn.cursor()
             cursor.execute(query, {**data, 'id': task_id})
+            self.set_task_tags(conn, task_id, tags_input)
             conn.commit()
         finally:
             conn.close()
@@ -268,9 +297,9 @@ class Database:
             conn.close()
 
     def get_due_today(self, user_id):
-        from datetime import datetime
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d 23:59") 
         
+        # Compare deadline
         query = "SELECT title, deadline FROM tasks WHERE user_id = ? AND deadline <= ? AND status != 'Done'"
         
         conn = self.get_connection()
@@ -278,5 +307,133 @@ class Database:
             cursor = conn.cursor()
             cursor.execute(query, (user_id, today))
             return cursor.fetchall()
+        finally:
+            conn.close()
+
+    def get_tasks_with_tags(self, user_id):
+        query = '''
+            SELECT 
+                t.id, 
+                t.title, 
+                t.category, 
+                GROUP_CONCAT(tg.name, ', ') as tags,
+                t.status, 
+                t.deadline,
+                t.description
+            FROM tasks t
+            LEFT JOIN task_tags tt ON t.id = tt.task_id
+            LEFT JOIN tags tg ON tt.tag_id = tg.id
+            WHERE t.user_id = ?
+            GROUP BY t.id
+            ORDER BY t.deadline
+        '''
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, (user_id,))
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
+    def set_task_tags(self, conn, task_id, tag_string):
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
+        
+        if not tag_string: return
+
+        tags = [t.strip() for t in tag_string.split(',') if t.strip()]
+        
+        for tag_name in tags:
+            cursor.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
+            res = cursor.fetchone()
+            
+            if res:
+                tag_id = res['id']
+            else:
+                cursor.execute("INSERT INTO tags (name) VALUES (?)", (tag_name,))
+                tag_id = cursor.lastrowid
+
+            cursor.execute("INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?)", (task_id, tag_id))
+
+    def get_filtered_tasks(self, user_id, filters):
+        """
+        filters: dict -> {'category': 'Work', 'tag': 'urgent', 'timeframe': 'overdue'}
+        """
+        # Base Query (reusing the complex JOIN logic to get tags)
+        sql = '''
+            SELECT 
+                t.id, t.title, t.category, t.status, t.deadline, t.description,
+                GROUP_CONCAT(tg.name, ', ') as tags
+            FROM tasks t
+            LEFT JOIN task_tags tt ON t.id = tt.task_id
+            LEFT JOIN tags tg ON tt.tag_id = tg.id
+            WHERE t.user_id = ?
+        '''
+        params = [user_id]
+
+        # 1. FILTER: Category (Exact Match)
+        if filters.get('category') and filters['category'] != 'All Categories':
+            sql += " AND t.category = ?"
+            params.append(filters['category'])
+
+        # 2. FILTER: Status (Exact Match - mostly for List View)
+        if filters.get('status') and filters['status'] != 'All Status':
+            sql += " AND t.status = ?"
+            params.append(filters['status'])
+
+        # 3. FILTER
+        tag_search = filters.get('tag')
+        if tag_search:
+            # Subquery: Find task_ids that have this tag
+            sql += ''' AND t.id IN (
+                        SELECT tt.task_id FROM task_tags tt 
+                        JOIN tags tg ON tt.tag_id = tg.id 
+                        WHERE tg.name LIKE ?
+                      )'''
+            params.append(f"%{tag_search}%")
+
+        # 4. FILTER: Timeframe (Date Logic)
+        timeframe = filters.get('timeframe')
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        if timeframe == 'Overdue':
+            sql += " AND t.deadline < ? AND t.status != 'Done'"
+            params.append(now_str)
+        elif timeframe == 'Due Today':
+            # Matches today's date (ignoring time for the start match)
+            today_start = datetime.now().strftime("%Y-%m-%d 00:00")
+            today_end = datetime.now().strftime("%Y-%m-%d 23:59")
+            sql += " AND t.deadline BETWEEN ? AND ?"
+            params.extend([today_start, today_end])
+        elif timeframe == 'Next 7 Days':
+            today_start = datetime.now().strftime("%Y-%m-%d 00:00")
+            next_week = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d 23:59")
+            sql += " AND t.deadline BETWEEN ? AND ?"
+            params.extend([today_start, next_week])
+
+        search_query = filters.get('search')
+        if search_query:
+            sql += " AND t.title LIKE ?"
+            params.append(f"%{search_query}%")
+
+        # Finalize Query
+        sql += " GROUP BY t.id ORDER BY t.deadline"
+        
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
+    # Helper to populate Category Dropdown
+    def get_all_categories(self, user_id):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT category FROM tasks WHERE user_id = ?", (user_id,))
+            return [row['category'] for row in cursor.fetchall()]
         finally:
             conn.close()

@@ -45,6 +45,14 @@ class RegisterPage(tk.Frame):
         if not username or not password:
             messagebox.showwarning("Input Error", "Please fill in all fields.")
             return
+        
+        if len(username) < 4 or len(username) > 20:
+            messagebox.showwarning("Invalid Username", "Username must be between 4 and 20 characters.")
+            return
+
+        if len(password) < 8:
+            messagebox.showwarning("Invalid Password", "Password must be at least 8 characters long.")
+            return
 
         if password != confirm:
             messagebox.showerror("Password Error", "Passwords do not match.")

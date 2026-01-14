@@ -158,105 +158,110 @@ class DropdownMenu(tk.Toplevel):
         command()
 
 def create_input_field(parent, label_text, var, row, col, input_type, mask=False):
-        label = tk.Label(
-            parent,
-            text=label_text,
-            font=FONTS['bold'],
-            bg=COLORS['primary_bg'],
-            fg=COLORS['primary_accent'],
-            anchor='w'
-        )
-        label.grid(row=row, column=col, sticky='w', padx=(10, 5), pady=5)
+    label = tk.Label(
+        parent,
+        text=label_text,
+        font=FONTS['bold'],
+        bg=COLORS['primary_bg'],
+        fg=COLORS['primary_accent'],
+        anchor='w'
+    )
+    label.grid(row=row, column=col, sticky='w', padx=(10, 5), pady=5)
 
-        match input_type:
-            case 'entry':
-                entry = tk.Entry(
-                    parent,
-                    textvariable=var,
-                    font=FONTS['default'],
-                    bg=COLORS['secondary_bg'],
-                    fg=COLORS['primary_txt'],
-                    insertbackground=COLORS['primary_accent'],
-                    show='*' if mask else '',
-                )
-                entry.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=3)
-                return entry
+    match input_type:
+        case 'entry':
+            entry = tk.Entry(
+                parent,
+                textvariable=var,
+                font=FONTS['default'],
+                bg=COLORS['secondary_bg'],
+                fg=COLORS['primary_txt'],
+                insertbackground=COLORS['primary_accent'],
+                show='*' if mask else '',
+            )
+            entry.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=3)
+            return entry
+        
+        case 'textarea':
+            text_container = tk.Frame(parent, bg=COLORS['primary_bg'])
+            text_container.grid(row=row + 1, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 10))
             
-            case 'textarea':
-                text_container = tk.Frame(parent, bg=COLORS['primary_bg'])
-                text_container.grid(row=row + 1, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 10))
-                
-                scrollbar = ttk.Scrollbar(text_container)
-                scrollbar.pack(side='right', fill='y')
-                
-                textarea = tk.Text(
-                    text_container,
-                    wrap=tk.WORD,
-                    height=8,
-                    font=FONTS['default'],
-                    bg=COLORS['secondary_bg'],
-                    fg=COLORS['primary_txt'],
-                    insertbackground=COLORS['primary_accent'],
-                    yscrollcommand=scrollbar.set,
-                    padx=5, pady=5
-                )
-                textarea.pack(side='left', fill='both', expand=True)
-                scrollbar.config(command=textarea.yview)
-                return textarea
+            scrollbar = ttk.Scrollbar(text_container)
+            scrollbar.pack(side='right', fill='y')
             
-            case 'dropdown':
-                status_options = ['To Do', 'In Progress', 'Done']
+            textarea = tk.Text(
+                text_container,
+                wrap=tk.WORD,
+                height=8,
+                font=FONTS['default'],
+                bg=COLORS['secondary_bg'],
+                fg=COLORS['primary_txt'],
+                insertbackground=COLORS['primary_accent'],
+                yscrollcommand=scrollbar.set,
+                padx=5, pady=5
+            )
+            textarea.pack(side='left', fill='both', expand=True)
+            scrollbar.config(command=textarea.yview)
+            return textarea
+        
+        case 'dropdown':
+            status_options = ['To Do', 'In Progress', 'Done']
 
-                combobox = ttk.Combobox(
-                    parent, 
-                    textvariable=var,
-                    font=FONTS['default'],
-                    values=status_options,
-                    state='readonly',
-                )
-                combobox.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=5)
-                return combobox
+            combobox = ttk.Combobox(
+                parent, 
+                textvariable=var,
+                font=FONTS['default'],
+                values=status_options,
+                state='readonly',
+            )
+            combobox.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=5)
+            return combobox
 
-            case 'date_picker':
-                cal = DateEntry(
-                    parent, 
-                    width=12, 
-                    background=COLORS['primary_accent'],
-                    foreground='white', 
-                    borderwidth=2, 
-                    date_pattern='yyyy-mm-dd',
-                    font=FONTS['default']
-                )
-                cal.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=3)
+        case 'date_picker':
+            cal = DateEntry(
+                parent, 
+                width=12, 
+                background=COLORS['primary_accent'],
+                foreground='white', 
+                borderwidth=2, 
+                date_pattern='yyyy-mm-dd',
+                font=FONTS['default']
+            )
+            cal.grid(row=row, column=col+1, sticky='ew', padx=(0, 10), pady=5, ipady=3)
 
-                def on_date_select(event):
-                    var.set(cal.get_date())
-                
-                cal.bind("<<DateEntrySelected>>", on_date_select)
+            def on_date_select(event):
+                var.set(cal.get_date())
+            
+            cal.bind("<<DateEntrySelected>>", on_date_select)
 
-                def update_calendar(*args):
-                    try:
-                        if not cal.winfo_exists():
-                            return
-                        
-                        date_str = var.get()
-                        if date_str:
-                            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-                            cal.set_date(date_obj)
-                    except (ValueError, tk.TclError):
-                        pass 
+            def update_calendar(*args):
+                try:
+                    if not cal.winfo_exists():
+                        return
+                    
+                    date_str = var.get()
+                    if date_str:
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                        cal.set_date(date_obj)
+                except (ValueError, tk.TclError):
+                    pass 
 
-                trace_id = var.trace_add("write", update_calendar)
+            trace_id = var.trace_add("write", update_calendar)
 
-                def on_destroy(event):
-                    try:
-                        var.trace_remove("write", trace_id)
-                    except:
-                        pass
-                
-                cal.bind("<Destroy>", on_destroy)
+            def on_destroy(event):
+                try:
+                    var.trace_remove("write", trace_id)
+                except:
+                    pass
+            
+            cal.bind("<Destroy>", on_destroy)
 
-                return cal
+            if not var.get():
+                from datetime import date
+                today_str = date.today().strftime('%Y-%m-%d')
+                var.set(today_str)
 
-            case _:
-                return None
+            return cal
+
+        case _:
+            return None

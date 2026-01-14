@@ -15,15 +15,12 @@ class TaskModal(tk.Toplevel):
         window_width = 480
         window_height = 480
         
-        # Get the screen dimension
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
 
-        # Find the center point
         center_x = int(screen_width/2 - window_width / 2)
         center_y = int(screen_height/2 - window_height / 2)
 
-        # set the position of the window to the center of the screen
         self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
         self.configure(bg=COLORS['primary_bg'])
         self.resizable(False, False)
@@ -31,7 +28,7 @@ class TaskModal(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         
-        # State Variables
+        # Variables
         self.title_var = tk.StringVar()
         self.cat_var = tk.StringVar()
         self.status_var = tk.StringVar(value="To Do")
@@ -40,8 +37,6 @@ class TaskModal(tk.Toplevel):
         # Main Container
         self.container = tk.Frame(self, bg=COLORS['primary_bg'])
         self.container.pack(fill='both', expand=True, padx=20, pady=20)
-        
-        # Configure Grid Column Weights for resizing
         self.container.columnconfigure(1, weight=1)
 
         self._build_ui()
@@ -50,23 +45,14 @@ class TaskModal(tk.Toplevel):
             self._populate_data()
 
     def _build_ui(self):
-        # 1. Title (Row 0)
+        # Fields
         create_input_field(self.container, "Title:", self.title_var, 0, 0, 'entry')
-
-        # 2. Category (Row 1) - Override generic dropdown values
         self.cat_cb = create_input_field(self.container, "Category:", self.cat_var, 1, 0, 'entry')
-
-        # 3. Status (Row 2)
         create_input_field(self.container, "Status:", self.status_var, 2, 0, 'dropdown')
-
-        # 4. Deadline (Row 3) - Uses DateEntry from helper
         create_input_field(self.container, "Deadline:", self.date_var, 3, 0, 'date_picker')
-
-        # 5. Description (Row 4) - Helper creates Label at Row 4, Textarea at Row 5
-        # Note: We pass None for var because the helper's textarea doesn't support textvariable
         self.desc_text = create_input_field(self.container, "Description:", None, 4, 0, 'textarea')
 
-        # 6. Buttons (Row 6)
+        # Buttons
         btn_frame = tk.Frame(self.container, bg=COLORS['primary_bg'])
         btn_frame.grid(row=6, column=0, columnspan=2, pady=25, sticky='e')
 
@@ -83,7 +69,6 @@ class TaskModal(tk.Toplevel):
         self.status_var.set(self.task.get('status', 'To Do'))
         self.date_var.set(self.task.get('deadline', ''))
         
-        # Manually handle text area since it's not bound to a variable
         self.desc_text.delete("1.0", tk.END)
         self.desc_text.insert("1.0", self.task.get('description', ''))
 
@@ -110,7 +95,7 @@ class KanbanPage(tk.Frame):
         self.controller = controller
         Header(self, controller, show_nav=True).pack(fill='x')
         
-        # Controls Area (New Container)
+        # Controls Area
         action_bar = tk.Frame(self, bg=COLORS['secondary_bg'])
         action_bar.pack(fill='x', padx=20, pady=0)
         
@@ -191,7 +176,13 @@ class KanbanPage(tk.Frame):
         card = tk.Frame(parent, bg='white', bd=1, relief='raised', padx=10, pady=10)
         card.pack(fill='x', padx=5, pady=5)
         
-        tk.Label(card, text=task['title'], font=FONTS['bold'], bg='white', fg=COLORS['primary_accent']).pack(anchor='w')
+        tk.Label(
+            card, text=task['title'], 
+            font=FONTS['bold'], 
+            bg='white', fg=COLORS['primary_accent'],
+            wraplength=250,
+            justify='left'
+        ).pack(anchor='w')
         tk.Label(card, text=task['category'], font=FONTS['small'], bg='white', fg='gray').pack(anchor='w')
         tk.Label(card, text=f"Due: {task['deadline']}", font=FONTS['small'], bg='white', fg=COLORS['primary_accent']).pack(anchor='w')
 
@@ -248,7 +239,8 @@ class KanbanPage(tk.Frame):
             
             x, y = event.x_root, event.y_root
             for status, col in self.columns.items():
-                if col.winfo_rootx() <= x <= col.winfo_rootx() + col.winfo_width():
+                if (col.winfo_rootx() <= x <= col.winfo_rootx() + col.winfo_width() and 
+                    col.winfo_rooty() <= y <= col.winfo_rooty() + col.winfo_height()):
                     self.controller.db.update_status(self.drag_data["task_id"], status)
                     self.refresh()
                     break
